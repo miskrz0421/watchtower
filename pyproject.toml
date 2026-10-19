@@ -1,0 +1,70 @@
+[project]
+name = "watchtower"
+version = "0.1.0"
+description = "A plugin-based monitoring framework: watch anything, detect changes, filter what matters, react."
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+authors = [
+    { name = "Person A" },
+    { name = "Person B" },
+    { name = "Person C" },
+]
+# Core dependencies only. The engine must run headless, so Qt and the
+# analytics stack live in optional extras (see docs/design-decisions.md, ADR-003).
+dependencies = [
+    "httpx>=0.27",
+    "beautifulsoup4>=4.12",
+    "feedparser>=6.0",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+gui = ["pyside6>=6.7"]
+reports = ["pandas>=2.2", "matplotlib>=3.9"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+    "pytest-qt>=4.4",
+    "ruff>=0.6",
+    "mypy>=1.11",
+    "types-PyYAML",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/watchtower"]
+
+# ---------------------------------------------------------------- tooling
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+markers = [
+    "gui: tests that need PySide6 and a display (run with: uv run pytest -m gui)",
+    "network: tests that hit a real local HTTP server",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+# E/F: pycodestyle + pyflakes, I: isort, B: bugbear, UP: pyupgrade, SIM: simplify
+select = ["E", "F", "I", "B", "UP", "SIM"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+mypy_path = "src"
+packages = ["watchtower"]
+
+[[tool.mypy.overrides]]
+module = ["feedparser.*", "bs4.*"]
+ignore_missing_imports = true
