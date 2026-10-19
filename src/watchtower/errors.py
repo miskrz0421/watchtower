@@ -17,4 +17,3 @@ class ParseError(WatchtowerError):
 
 class NotifyError(WatchtowerError):
     """Raised when an error occurs while dispatching a notification."""
-

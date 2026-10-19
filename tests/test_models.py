@@ -83,4 +83,3 @@ def test_error_hierarchy() -> None:
 
     with pytest.raises(WatchtowerError):
         raise SourceError("Failed to fetch")
-

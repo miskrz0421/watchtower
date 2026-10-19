@@ -34,8 +34,7 @@ class FakeSource(Source):
             self._snapshots = list(snapshots)
         elif contents is not None:
             self._snapshots = [
-                Snapshot(items=(), raw_text=text, taken_at=datetime.now(UTC))
-                for text in contents
+                Snapshot(items=(), raw_text=text, taken_at=datetime.now(UTC)) for text in contents
             ]
         else:
             self._snapshots = [Snapshot(items=(), raw_text="", taken_at=datetime.now(UTC))]

@@ -93,9 +93,7 @@ class Snapshot:
         """
         items = tuple(Item.from_dict(item_dict) for item_dict in data.get("items", []))
         taken_at = (
-            datetime.fromisoformat(data["taken_at"])
-            if "taken_at" in data
-            else datetime.now(UTC)
+            datetime.fromisoformat(data["taken_at"]) if "taken_at" in data else datetime.now(UTC)
         )
         return cls(
             items=items,
@@ -140,4 +138,3 @@ class ChangeEvent:
     timestamp: datetime
     changes: tuple[Change, ...]
     summary: str
-
