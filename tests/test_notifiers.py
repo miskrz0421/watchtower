@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 
 from watchtower.models import Change, ChangeEvent, ChangeKind, Item
 from watchtower.notifiers.console import ConsoleNotifier
-from watchtower.registry import create
+from watchtower.registry import create_notifier
 
 
 def test_console_notifier_outputs_text_diff() -> None:
@@ -56,5 +56,5 @@ def test_console_notifier_outputs_item_change() -> None:
 
 def test_registry_creates_console_notifier() -> None:
     """Test creating ConsoleNotifier through registry."""
-    notifier = create("notifier", "console")
+    notifier = create_notifier("console")
     assert isinstance(notifier, ConsoleNotifier)

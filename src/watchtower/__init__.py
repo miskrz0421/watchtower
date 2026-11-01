@@ -27,6 +27,10 @@ from watchtower.notifiers.base import Notifier
 from watchtower.notifiers.console import ConsoleNotifier
 from watchtower.registry import (
     create,
+    create_differ,
+    create_filter,
+    create_notifier,
+    create_source,
     list_plugins,
     register_differ,
     register_filter,
@@ -61,6 +65,10 @@ __all__ = [
     "WatcherStateChanged",
     "WatchtowerError",
     "create",
+    "create_differ",
+    "create_filter",
+    "create_notifier",
+    "create_source",
     "list_plugins",
     "register_differ",
     "register_filter",

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from watchtower.diffs.text import TextDiff
 from watchtower.models import ChangeKind, Snapshot
-from watchtower.registry import create
+from watchtower.registry import create_differ
 
 
 def test_text_diff_first_run_returns_empty() -> None:
@@ -43,6 +43,6 @@ def test_text_diff_computes_unified_diff() -> None:
 
 def test_registry_creates_text_differ() -> None:
     """Test instantiating TextDiff from the plugin registry."""
-    differ = create("differ", "text", context_lines=5)
+    differ = create_differ("text", context_lines=5)
     assert isinstance(differ, TextDiff)
     assert differ.context_lines == 5

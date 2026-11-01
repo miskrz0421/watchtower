@@ -9,7 +9,7 @@ import pytest
 
 from watchtower.errors import ParseError, SourceError
 from watchtower.models import Item, Snapshot
-from watchtower.registry import create
+from watchtower.registry import create_source
 from watchtower.sources.base import Source
 from watchtower.sources.fake import FakeSource
 from watchtower.sources.file import FileSource
@@ -105,10 +105,10 @@ def test_file_source_read_and_error(tmp_path: Path) -> None:
 
 def test_registry_creates_fake_and_file_sources(tmp_path: Path) -> None:
     """Test instantiating FakeSource and FileSource via registry factory."""
-    fake = create("source", "fake", contents=["step 1"])
+    fake = create_source("fake", contents=["step 1"])
     assert isinstance(fake, FakeSource)
 
     f = tmp_path / "reg.txt"
     f.write_text("content", encoding="utf-8")
-    file_src = create("source", "file", path=f)
+    file_src = create_source("file", path=f)
     assert isinstance(file_src, FileSource)
