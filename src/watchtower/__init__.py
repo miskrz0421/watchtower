@@ -12,8 +12,10 @@ from watchtower.errors import (
 from watchtower.events import (
     ChangeDetected,
     CheckCompleted,
+    Event,
     EventBus,
     FetchFailed,
+    WatcherState,
     WatcherStateChanged,
 )
 from watchtower.models import (
@@ -49,6 +51,7 @@ __all__ = [
     "CheckCompleted",
     "ConsoleNotifier",
     "Differ",
+    "Event",
     "EventBus",
     "FakeSource",
     "FetchFailed",
@@ -62,6 +65,7 @@ __all__ = [
     "SourceError",
     "TextDiff",
     "Watcher",
+    "WatcherState",
     "WatcherStateChanged",
     "WatchtowerError",
     "create",

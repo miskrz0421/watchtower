@@ -7,52 +7,72 @@ from collections import defaultdict
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from enum import StrEnum
 from typing import Any, TypeVar
 
 from watchtower.models import ChangeEvent
 
 logger = logging.getLogger(__name__)
 
-T = TypeVar("T")
+
+def _utc_now() -> datetime:
+    """Return the current time in UTC."""
+    return datetime.now(UTC)
+
+
+class WatcherState(StrEnum):
+    """Enumeration of possible watcher runtime states."""
+
+    IDLE = "idle"
+    ACTIVE = "active"
+    PAUSED = "paused"
+    ERROR = "error"
+    STOPPED = "stopped"
+
+
+@dataclass(frozen=True, kw_only=True)
+class Event:
+    """Base class for all events dispatched via EventBus."""
+
+    timestamp: datetime = field(default_factory=_utc_now)
+
+
+T = TypeVar("T", bound=Event)
 
 
 @dataclass(frozen=True)
-class CheckCompleted:
+class CheckCompleted(Event):
     """Published after every check execution, capturing duration and status."""
 
     watcher_name: str
     duration_seconds: float
     ok: bool
     error: str | None = None
-    timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
 
 
 @dataclass(frozen=True)
-class ChangeDetected:
+class ChangeDetected(Event):
     """Published when changes are detected and pass configured filters."""
 
     watcher_name: str
     event: ChangeEvent
-    timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
 
 
 @dataclass(frozen=True)
-class FetchFailed:
+class FetchFailed(Event):
     """Published when a source fetch operation fails permanently."""
 
     watcher_name: str
     error: str
-    timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
 
 
 @dataclass(frozen=True)
-class WatcherStateChanged:
+class WatcherStateChanged(Event):
     """Published whenever a watcher transitions between runtime states."""
 
     watcher_name: str
-    old_state: str
-    new_state: str
-    timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
+    old_state: WatcherState
+    new_state: WatcherState
 
 
 class EventBus:
@@ -66,7 +86,7 @@ class EventBus:
 
     def __init__(self) -> None:
         """Initialize an empty EventBus with no subscribers."""
-        self._subscribers: dict[type[Any], list[Callable[[Any], None]]] = defaultdict(list)
+        self._subscribers: dict[type[Event], list[Callable[[Any], None]]] = defaultdict(list)
 
     def subscribe(self, event_type: type[T], handler: Callable[[T], None]) -> None:
         """Register an event handler for a specific event class.
@@ -87,7 +107,7 @@ class EventBus:
         if event_type in self._subscribers and handler in self._subscribers[event_type]:
             self._subscribers[event_type].remove(handler)
 
-    def publish(self, event: Any) -> None:
+    def publish(self, event: Event) -> None:
         """Dispatch an event synchronously to all registered subscribers.
 
         Also notifies subscribers subscribed to any base class of the event.

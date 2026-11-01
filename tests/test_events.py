@@ -10,8 +10,10 @@ import pytest
 from watchtower.events import (
     ChangeDetected,
     CheckCompleted,
+    Event,
     EventBus,
     FetchFailed,
+    WatcherState,
     WatcherStateChanged,
 )
 from watchtower.models import Change, ChangeEvent, ChangeKind
@@ -38,6 +40,8 @@ def test_event_bus_publish_and_subscribe() -> None:
     assert received_checks[0].watcher_name == "test_watcher"
     assert received_checks[0].duration_seconds == 0.15
     assert received_checks[0].ok is True
+    assert isinstance(received_checks[0], Event)
+    assert received_checks[0].timestamp is not None
 
     # Test unsubscribe
     bus.unsubscribe(CheckCompleted, on_check)
@@ -79,7 +83,15 @@ def test_change_detected_and_watcher_state_changed_events() -> None:
     )
     detected = ChangeDetected(watcher_name="w", event=change_event)
     assert detected.event.summary == "summary"
+    assert isinstance(detected, Event)
 
-    state_changed = WatcherStateChanged(watcher_name="w", old_state="active", new_state="paused")
+    state_changed = WatcherStateChanged(
+        watcher_name="w",
+        old_state=WatcherState.ACTIVE,
+        new_state=WatcherState.PAUSED,
+    )
+    assert state_changed.old_state == WatcherState.ACTIVE
     assert state_changed.old_state == "active"
+    assert state_changed.new_state == WatcherState.PAUSED
     assert state_changed.new_state == "paused"
+    assert isinstance(state_changed, Event)
