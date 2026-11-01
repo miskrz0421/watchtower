@@ -93,3 +93,30 @@ def test_watcher_error_handling_and_event_publishing() -> None:
     assert "Fetch timeout error" in (failed_checks[0].error or "")
     assert len(fetch_fails) == 1
     assert "Fetch timeout error" in fetch_fails[0].error
+
+
+def test_watcher_properties_and_encapsulation() -> None:
+    """Test that Watcher exposes read-only properties for its pipeline components."""
+    source = FakeSource(contents=["version 1\n"])
+    differ = TextDiff()
+    notifier = ConsoleNotifier()
+    bus = EventBus()
+    watcher = Watcher(
+        name="props_watcher",
+        source=source,
+        differ=differ,
+        notifiers=[notifier],
+        event_bus=bus,
+    )
+    assert watcher.name == "props_watcher"
+    assert watcher.source is source
+    assert watcher.differ is differ
+    assert watcher.notifiers == [notifier]
+    assert watcher.event_bus is bus
+    assert watcher.last_snapshot is None
+
+    # Verify attributes cannot be directly reassigned (read-only properties)
+    with pytest.raises(AttributeError):
+        watcher.name = "new_name"  # type: ignore[misc]
+    with pytest.raises(AttributeError):
+        watcher.source = source  # type: ignore[misc]
