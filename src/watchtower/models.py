@@ -5,7 +5,26 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Any
+from typing import TypedDict
+
+
+class ItemDict(TypedDict):
+    """Dictionary representation of an Item for serialization."""
+
+    key: str
+    title: str
+    url: str | None
+    price: float | None
+    text: str
+    published: str | None
+
+
+class SnapshotDict(TypedDict):
+    """Dictionary representation of a Snapshot for serialization."""
+
+    items: list[ItemDict]
+    raw_text: str
+    taken_at: str
 
 
 @dataclass(frozen=True)
@@ -28,7 +47,7 @@ class Item:
         price_str = f", price={self.price}" if self.price is not None else ""
         return f"Item(key={self.key!r}, title={self.title!r}{price_str})"
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self) -> ItemDict:
         """Convert item to a dictionary suitable for JSON serialization."""
         return {
             "key": self.key,
@@ -40,7 +59,7 @@ class Item:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> Item:
+    def from_dict(cls, data: ItemDict) -> Item:
         """Create an Item instance from a dictionary.
 
         Args:
@@ -49,14 +68,15 @@ class Item:
         Returns:
             A reconstructed Item instance.
         """
-        published = None
-        if data.get("published"):
-            published = datetime.fromisoformat(data["published"])
+        published_raw = data.get("published")
+        published = datetime.fromisoformat(published_raw) if published_raw is not None else None
+        price_raw = data.get("price")
+        price = float(price_raw) if price_raw is not None else None
         return cls(
             key=str(data["key"]),
             title=str(data["title"]),
             url=data.get("url"),
-            price=float(data["price"]) if data.get("price") is not None else None,
+            price=price,
             text=str(data.get("text", "")),
             published=published,
         )
@@ -73,7 +93,7 @@ class Snapshot:
     raw_text: str = ""
     taken_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self) -> SnapshotDict:
         """Convert snapshot to a dictionary for serialization."""
         return {
             "items": [item.to_dict() for item in self.items],
@@ -82,7 +102,7 @@ class Snapshot:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> Snapshot:
+    def from_dict(cls, data: SnapshotDict) -> Snapshot:
         """Recreate a Snapshot from serialized dictionary data.
 
         Args:

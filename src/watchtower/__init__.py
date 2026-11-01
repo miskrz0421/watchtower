@@ -23,7 +23,9 @@ from watchtower.models import (
     ChangeEvent,
     ChangeKind,
     Item,
+    ItemDict,
     Snapshot,
+    SnapshotDict,
 )
 from watchtower.notifiers.base import Notifier
 from watchtower.notifiers.console import ConsoleNotifier
@@ -57,10 +59,12 @@ __all__ = [
     "FetchFailed",
     "FileSource",
     "Item",
+    "ItemDict",
     "Notifier",
     "NotifyError",
     "ParseError",
     "Snapshot",
+    "SnapshotDict",
     "Source",
     "SourceError",
     "TextDiff",
