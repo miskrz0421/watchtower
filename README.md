@@ -70,6 +70,11 @@ watchers:
 ├── pyproject.toml        project metadata, dependencies, tool config (ruff, mypy, pytest)
 ├── uv.lock               exact dependency versions (commit this)
 ├── README.md
+├── .github/              PR template and CI workflow
+├── docs/                 architecture and design decisions
 ├── src/watchtower/       the package
-└── tests/                pytest tests, mirroring src/
+└── tests/                pytest tests
 ```
+
+See [docs/architecture.md](docs/architecture.md) for the design and
+[docs/decisions.md](docs/decisions.md) for the reasons behind it.
