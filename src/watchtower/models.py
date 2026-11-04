@@ -152,7 +152,7 @@ class Change:
 
 @dataclass(frozen=True)
 class ChangeEvent:
-    """Event delivered to notifiers containing filtered changes."""
+    """Event delivered to notifiers containing detected changes."""
 
     watcher_name: str
     timestamp: datetime

@@ -2,6 +2,7 @@
 
 from watchtower.core.watcher import Watcher
 from watchtower.diffs.base import Differ
+from watchtower.diffs.items import ItemDiff
 from watchtower.diffs.text import TextDiff
 from watchtower.errors import (
     NotifyError,
@@ -45,6 +46,11 @@ from watchtower.registry import (
 from watchtower.sources.base import Source
 from watchtower.sources.fake import FakeSource
 from watchtower.sources.file import FileSource
+from watchtower.sources.http import HttpSource
+from watchtower.sources.parsing import parse_price
+from watchtower.sources.rss import RSSSource
+from watchtower.sources.webpage import WebPageSource
+from watchtower.storage.snapshots import SnapshotStore
 
 __all__ = [
     "Change",
@@ -60,13 +66,17 @@ __all__ = [
     "FetchFailed",
     "FileSource",
     "Filter",
+    "HttpSource",
     "Item",
     "ItemDict",
+    "ItemDiff",
     "Notifier",
     "NotifyError",
     "ParseError",
+    "RSSSource",
     "Snapshot",
     "SnapshotDict",
+    "SnapshotStore",
     "Source",
     "SourceError",
     "TextDiff",
@@ -74,12 +84,14 @@ __all__ = [
     "WatcherState",
     "WatcherStateChanged",
     "WatchtowerError",
+    "WebPageSource",
     "create",
     "create_differ",
     "create_filter",
     "create_notifier",
     "create_source",
     "list_plugins",
+    "parse_price",
     "register_differ",
     "register_filter",
     "register_notifier",

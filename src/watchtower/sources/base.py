@@ -5,6 +5,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections.abc import Iterable
 from datetime import UTC, datetime
+from typing import final
 
 from watchtower.errors import ParseError, SourceError
 from watchtower.models import Item, Snapshot
@@ -18,6 +19,7 @@ class Source(ABC):
     `parse()` to extract structured items.
     """
 
+    @final
     def snapshot(self) -> Snapshot:
         """Template Method: retrieve raw data and construct a snapshot.
 

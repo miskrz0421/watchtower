@@ -88,6 +88,17 @@ def test_fake_source_cycling() -> None:
     assert snap3.raw_text == "version 2"
 
 
+def test_fake_source_replays_scripted_items_in_order() -> None:
+    """Test that scripted snapshots replay their items, repeating the last one."""
+    first = Snapshot(items=(Item(key="1", title="One"),), raw_text="one")
+    second = Snapshot(items=(Item(key="2", title="Two"),), raw_text="two")
+    source = FakeSource(snapshots=[first, second])
+
+    assert source.snapshot().items == first.items
+    assert source.snapshot().items == second.items
+    assert source.snapshot().items == second.items
+
+
 def test_file_source_read_and_error(tmp_path: Path) -> None:
     """Test FileSource reads existing file and raises SourceError on missing file."""
     test_file = tmp_path / "sample.txt"

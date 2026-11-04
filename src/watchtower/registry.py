@@ -42,8 +42,6 @@ def _register(kind: str, name: str) -> Callable[[type[T]], type[T]]:
     """
 
     def decorator(cls: type[T]) -> type[T]:
-        if kind not in _ALL_REGISTRIES:
-            _ALL_REGISTRIES[kind] = {}
         _ALL_REGISTRIES[kind][name] = cls
         return cls
 

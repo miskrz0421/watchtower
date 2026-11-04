@@ -33,7 +33,7 @@ src/watchtower/
 ├── registry.py      @register_* decorators, create(kind, name, **params)
 ├── events.py        event dataclasses + EventBus
 ├── cli.py           argparse: check / run / plugins / gui / report
-├── sources/         base (Template Method), fake, file, rss, webpage, json_api, http helper
+├── sources/         base (Template Method), fake, file, rss, webpage, json_api, http, parsing
 ├── storage/         SnapshotStore (Memento), HistoryStore, HistoryRecorder
 ├── diffs/           base (Strategy), text, items
 ├── filters/         base (Specification + Composite: And/Or/Not), built-in filters

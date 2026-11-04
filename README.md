@@ -39,7 +39,8 @@ Planned commands (added milestone by milestone):
 
 ```bash
 uv run watchtower check                # run the built-in demo watcher (M1)
-uv run watchtower check config.yaml    # run every watcher once        (M2)
+uv run watchtower check --db PATH      # demo watcher with saved state (M2)
+uv run watchtower check config.yaml    # run every watcher once        (M3)
 uv run watchtower run config.yaml      # headless scheduler            (M3)
 uv run watchtower plugins              # list registered plugins       (M3)
 uv run watchtower gui config.yaml      # tray app                      (M5)

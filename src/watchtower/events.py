@@ -51,7 +51,7 @@ class CheckCompleted(Event):
 
 @dataclass(frozen=True)
 class ChangeDetected(Event):
-    """Published when changes are detected and pass configured filters."""
+    """Published when a check detects changes."""
 
     watcher_name: str
     event: ChangeEvent

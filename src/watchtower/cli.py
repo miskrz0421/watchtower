@@ -13,6 +13,26 @@ from watchtower.notifiers.console import ConsoleNotifier
 from watchtower.sources.fake import FakeSource
 from watchtower.sources.file import FileSource
 
+DEMO_PAGES = [
+    "Welcome to Watchtower Listings\n1. Flat in Stare Miasto - 3500 PLN\n",
+    (
+        "Welcome to Watchtower Listings\n"
+        "1. Flat in Stare Miasto - 3500 PLN\n"
+        "2. Flat in Krowodrza - 2800 PLN [NEW!]\n"
+    ),
+]
+
+
+def build_demo_watcher() -> Watcher:
+    """Create a watcher that replays the scripted demo pages."""
+    return Watcher(
+        name="Krakow Flats Watcher",
+        source=FakeSource(contents=DEMO_PAGES),
+        differ=TextDiff(),
+        notifiers=[ConsoleNotifier(stream=sys.stdout)],
+        event_bus=EventBus(),
+    )
+
 
 def run_demo_check() -> int:
     """Run an end-to-end M1 demonstration check using FakeSource and TextDiff.
@@ -25,27 +45,7 @@ def run_demo_check() -> int:
         0 on success.
     """
     sys.stdout.write("=== Watchtower M1 Demo: Foundations ===\n")
-    bus = EventBus()
-    notifier = ConsoleNotifier(stream=sys.stdout)
-    differ = TextDiff()
-
-    scripted_pages = [
-        "Welcome to Watchtower Listings\n1. Flat in Stare Miasto - 3500 PLN\n",
-        (
-            "Welcome to Watchtower Listings\n"
-            "1. Flat in Stare Miasto - 3500 PLN\n"
-            "2. Flat in Krowodrza - 2800 PLN [NEW!]\n"
-        ),
-    ]
-
-    source = FakeSource(contents=scripted_pages)
-    watcher = Watcher(
-        name="Krakow Flats Watcher",
-        source=source,
-        differ=differ,
-        notifiers=[notifier],
-        event_bus=bus,
-    )
+    watcher = build_demo_watcher()
 
     sys.stdout.write("\n[Step 1] Running initial check (establishing baseline)...\n")
     event1 = watcher.check_once()
