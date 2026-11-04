@@ -14,7 +14,7 @@ history and reports) or **headless** from the command line.
 
 | Milestone | Theme | Status |
 |---|---|---|
-| M1 | Foundations | ⏳ planned |
+| M1 | Foundations | ✅ done |
 | M2 | Real data and memory | ⏳ planned |
 | M3 | Config and filters | ⏳ planned |
 | M4 | Robustness and real notifications | ⏳ planned |
@@ -26,8 +26,8 @@ history and reports) or **headless** from the command line.
 Requirements: Python 3.12+ and [uv](https://docs.astral.sh/uv/).
 
 ```bash
-uv sync                    # core + dev tools
-uv sync --all-extras       # + GUI (PySide6) and reports (pandas, matplotlib)
+uv sync                    # core + dev tools (dev includes PySide6 for pytest-qt)
+uv sync --all-extras       # + reports (pandas, matplotlib)
 
 uv run pytest              # tests
 uv run ruff check .        # lint
@@ -38,7 +38,8 @@ uv run mypy                # type check
 Planned commands (added milestone by milestone):
 
 ```bash
-uv run watchtower check config.yaml    # run every watcher once        (M1–M2)
+uv run watchtower check                # run the built-in demo watcher (M1)
+uv run watchtower check config.yaml    # run every watcher once        (M2)
 uv run watchtower run config.yaml      # headless scheduler            (M3)
 uv run watchtower plugins              # list registered plugins       (M3)
 uv run watchtower gui config.yaml      # tray app                      (M5)

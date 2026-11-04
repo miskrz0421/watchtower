@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any, TypeVar
 
 if TYPE_CHECKING:
     from watchtower.diffs.base import Differ
+    from watchtower.filters.base import Filter
     from watchtower.notifiers.base import Notifier
     from watchtower.sources.base import Source
 
@@ -140,7 +141,7 @@ def create_differ(name: str, **params: Any) -> Differ:
     return cls(**params)  # type: ignore[return-value]
 
 
-def create_filter(name: str, **params: Any) -> object:
+def create_filter(name: str, **params: Any) -> Filter:
     """Instantiate a registered Filter plugin.
 
     Args:
@@ -148,13 +149,13 @@ def create_filter(name: str, **params: Any) -> object:
         **params: Arguments passed to the filter constructor.
 
     Returns:
-        An instance of the registered filter class.
+        An instance of the registered Filter subclass.
 
     Raises:
         KeyError: If the filter plugin name is not registered.
     """
     cls = _lookup(_FILTERS, "filter", name)
-    return cls(**params)
+    return cls(**params)  # type: ignore[return-value]
 
 
 def create_notifier(name: str, **params: Any) -> Notifier:
@@ -174,7 +175,7 @@ def create_notifier(name: str, **params: Any) -> Notifier:
     return cls(**params)  # type: ignore[return-value]
 
 
-def create(kind: str, name: str, **params: Any) -> Source | Differ | Notifier | object:
+def create(kind: str, name: str, **params: Any) -> Source | Differ | Filter | Notifier:
     """Instantiate a registered plugin class with provided keyword arguments.
 
     Prefer the type-safe alternatives: ``create_source``, ``create_differ``,
@@ -191,7 +192,7 @@ def create(kind: str, name: str, **params: Any) -> Source | Differ | Notifier | 
     Raises:
         KeyError: If the category or plugin name is not registered.
     """
-    factories: dict[str, Callable[..., Source | Differ | Notifier | object]] = {
+    factories: dict[str, Callable[..., Source | Differ | Filter | Notifier]] = {
         "source": create_source,
         "differ": create_differ,
         "filter": create_filter,

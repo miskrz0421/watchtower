@@ -23,11 +23,10 @@ def _utc_now() -> datetime:
 class WatcherState(StrEnum):
     """Enumeration of possible watcher runtime states."""
 
-    IDLE = "idle"
     ACTIVE = "active"
     PAUSED = "paused"
-    ERROR = "error"
-    STOPPED = "stopped"
+    BACKOFF = "backoff"
+    DISABLED = "disabled"
 
 
 @dataclass(frozen=True, kw_only=True)

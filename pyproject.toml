@@ -6,12 +6,12 @@ readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "MIT" }
 authors = [
-    { name = "Person A" },
-    { name = "Person B" },
-    { name = "Person C" },
+    { name = "Bartłomiej Jucha" },
+    { name = "Artur Sojka" },
+    { name = "Michał Krzempek" },
 ]
 # Core dependencies only. The engine must run headless, so Qt and the
-# analytics stack live in optional extras (see docs/design-decisions.md, ADR-003).
+# analytics stack live in optional extras (see docs/decisions.md, ADR-003).
 dependencies = [
     "httpx>=0.27",
     "beautifulsoup4>=4.12",
@@ -34,6 +34,7 @@ dev = [
     "ruff>=0.6",
     "mypy>=1.11",
     "types-PyYAML",
+    "pyside6>=6.7",
 ]
 
 [build-system]

@@ -18,6 +18,7 @@ from watchtower.events import (
     WatcherState,
     WatcherStateChanged,
 )
+from watchtower.filters.base import Filter
 from watchtower.models import (
     Change,
     ChangeEvent,
@@ -58,6 +59,7 @@ __all__ = [
     "FakeSource",
     "FetchFailed",
     "FileSource",
+    "Filter",
     "Item",
     "ItemDict",
     "Notifier",

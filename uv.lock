@@ -3,10 +3,10 @@ revision = 5
 requires-python = ">=3.12"
 resolution-markers = [
     "python_full_version >= '3.15' and sys_platform == 'win32'",
-    "python_full_version == '3.14.*' and sys_platform == 'win32'",
     "python_full_version >= '3.15' and sys_platform == 'emscripten'",
-    "python_full_version == '3.14.*' and sys_platform == 'emscripten'",
     "python_full_version >= '3.15' and sys_platform != 'emscripten' and sys_platform != 'win32'",
+    "python_full_version == '3.14.*' and sys_platform == 'win32'",
+    "python_full_version == '3.14.*' and sys_platform == 'emscripten'",
     "python_full_version == '3.14.*' and sys_platform != 'emscripten' and sys_platform != 'win32'",
     "python_full_version < '3.14' and sys_platform == 'win32'",
     "python_full_version < '3.14' and sys_platform == 'emscripten'",
@@ -1318,6 +1318,7 @@ reports = [
 [package.dev-dependencies]
 dev = [
     { name = "mypy" },
+    { name = "pyside6" },
     { name = "pytest" },
     { name = "pytest-cov" },
     { name = "pytest-qt" },
@@ -1340,6 +1341,7 @@ provides-extras = ["gui", "reports"]
 [package.metadata.requires-dev]
 dev = [
     { name = "mypy", specifier = ">=1.11" },
+    { name = "pyside6", specifier = ">=6.7" },
     { name = "pytest", specifier = ">=8.0" },
     { name = "pytest-cov", specifier = ">=5.0" },
     { name = "pytest-qt", specifier = ">=4.4" },
