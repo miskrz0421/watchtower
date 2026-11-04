@@ -15,7 +15,7 @@ class Notifier(ABC):
         """Send a ChangeEvent to the configured notification target.
 
         Args:
-            event: The change event containing filtered changes and summary.
+            event: The change event containing detected changes and a summary.
 
         Raises:
             NotifyError: If sending the notification fails.

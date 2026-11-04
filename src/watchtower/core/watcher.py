@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 class Watcher:
-    """Orchestrates snapshot capture, diffing, filtering, and notification.
+    """Orchestrates snapshot capture, diffing, and notification.
 
     Maintains current state for a single monitored target. Emits lifecycle
     and detection events to the central EventBus for global observers (such

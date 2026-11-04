@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
-from datetime import UTC, datetime
 
 from watchtower.models import Item, Snapshot
 from watchtower.registry import register_source
@@ -12,10 +11,12 @@ from watchtower.sources.base import Source
 
 @register_source("fake")
 class FakeSource(Source):
-    """Source returning a scripted sequence of snapshots or raw text contents.
+    """Source replaying a scripted sequence of snapshots or raw text contents.
 
-    Useful for offline testing, demos, and reproducibility. If the calls exceed
-    the number of scripted entries, the last entry is repeated.
+    Useful for offline testing, demos, and reproducibility. Each check replays
+    the items and raw text of the next entry, and `taken_at` is the real time
+    of the check. If the calls exceed the scripted entries, the last entry is
+    repeated.
     """
 
     def __init__(
@@ -29,34 +30,22 @@ class FakeSource(Source):
             snapshots: Optional list of pre-constructed Snapshot instances.
             contents: Optional list of raw text strings.
         """
-        self._step = 0
         if snapshots is not None:
             self._snapshots = list(snapshots)
         elif contents is not None:
-            self._snapshots = [
-                Snapshot(items=(), raw_text=text, taken_at=datetime.now(UTC)) for text in contents
-            ]
+            self._snapshots = [Snapshot(raw_text=text) for text in contents]
         else:
-            self._snapshots = [Snapshot(items=(), raw_text="", taken_at=datetime.now(UTC))]
+            self._snapshots = [Snapshot()]
+        self._step = 0
+        self._current_items: tuple[Item, ...] = ()
 
     def fetch(self) -> str:
-        """Return raw content of the current scripted snapshot."""
-        current = self._get_current_snapshot()
+        """Return the raw text of the next scripted entry."""
+        current = self._snapshots[self._step]
+        self._current_items = current.items
+        self._step = min(self._step + 1, len(self._snapshots) - 1)
         return current.raw_text
 
     def parse(self, raw: str) -> Iterable[Item]:
-        """Return the items of the current scripted snapshot."""
-        current = self._get_current_snapshot()
-        return current.items
-
-    def snapshot(self) -> Snapshot:
-        """Advance the step counter and return the snapshot via template method."""
-        snap = super().snapshot()
-        if self._step < len(self._snapshots) - 1:
-            self._step += 1
-        return snap
-
-    def _get_current_snapshot(self) -> Snapshot:
-        """Retrieve the snapshot for the current step."""
-        idx = min(self._step, len(self._snapshots) - 1)
-        return self._snapshots[idx]
+        """Return the items of the entry selected by the last `fetch()`."""
+        return self._current_items

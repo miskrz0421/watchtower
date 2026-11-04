@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from watchtower.diffs.items import ItemDiff
 from watchtower.diffs.text import TextDiff
 from watchtower.notifiers.console import ConsoleNotifier
 from watchtower.registry import (
@@ -18,6 +19,17 @@ from watchtower.registry import (
     register_source,
 )
 from watchtower.sources.fake import FakeSource
+from watchtower.sources.rss import RSSSource
+from watchtower.sources.webpage import WebPageSource
+
+
+def test_m2_plugins_are_registered() -> None:
+    """Test that the M2 plugins are available through the registry."""
+    assert isinstance(create_source("rss", url="http://test/feed"), RSSSource)
+    assert isinstance(
+        create_source("webpage", url="http://test/page", selector=".offer"), WebPageSource
+    )
+    assert isinstance(create_differ("items"), ItemDiff)
 
 
 def test_registry_registration_and_creation() -> None:
