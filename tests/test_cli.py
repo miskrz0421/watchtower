@@ -20,13 +20,46 @@ def test_cli_check_demo(capsys: pytest.CaptureFixture[str]) -> None:
     assert "Demo completed successfully" in captured.out
 
 
-def test_cli_check_file(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    """Test running watchtower check with a file path."""
+def test_cli_check_file_reports_change_between_runs(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Test that check FILE --db saves a baseline, then shows what changed since."""
+    target_file = tmp_path / "watch_me.txt"
+    db = str(tmp_path / "watchtower.db")
+    target_file.write_text("initial contents\n", encoding="utf-8")
+
+    assert main(["check", str(target_file), "--db", db]) == 0
+    assert "Baseline saved" in capsys.readouterr().out
+
+    assert main(["check", str(target_file), "--db", db]) == 0
+    assert "No changes" in capsys.readouterr().out
+
+    target_file.write_text("edited contents\n", encoding="utf-8")
+    assert main(["check", str(target_file), "--db", db]) == 0
+    out = capsys.readouterr().out
+    assert "-initial contents" in out
+    assert "+edited contents" in out
+
+
+def test_cli_check_file_without_db_fails(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Test that checking a file without --db explains why it cannot work."""
     target_file = tmp_path / "watch_me.txt"
     target_file.write_text("initial contents\n", encoding="utf-8")
 
-    code = main(["check", str(target_file)])
-    assert code == 0
+    assert main(["check", str(target_file)]) == 2
+    assert "needs --db PATH" in capsys.readouterr().err
+
+
+def test_cli_storage_error_is_reported(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """Test that an unusable database path gives an error message, not a traceback."""
+    target_file = tmp_path / "watch_me.txt"
+    target_file.write_text("initial contents\n", encoding="utf-8")
+    db = str(tmp_path / "missing" / "watchtower.db")
+
+    assert main(["check", str(target_file), "--db", db]) == 1
+    assert "Error: Cannot open snapshot database" in capsys.readouterr().err
 
 
 def test_cli_check_file_nonexistent(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
