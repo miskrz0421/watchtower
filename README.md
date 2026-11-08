@@ -39,13 +39,26 @@ Planned commands (added milestone by milestone):
 
 ```bash
 uv run watchtower check                # run the built-in demo watcher (M1)
-uv run watchtower check --db PATH      # demo watcher with saved state (M2)
+uv run watchtower check --db PATH      # demo listings watcher with saved state (M2)
+uv run watchtower check FILE --db PATH # changes in a local file since the last run (M2)
 uv run watchtower check config.yaml    # run every watcher once        (M3)
 uv run watchtower run config.yaml      # headless scheduler            (M3)
 uv run watchtower plugins              # list registered plugins       (M3)
 uv run watchtower gui config.yaml      # tray app                      (M5)
 uv run watchtower report --out out/    # export charts                 (M6)
 ```
+
+## M2 demo: remembering state between runs
+
+```bash
+uv run python examples/fake_listings/server.py   # terminal 1: fake listings site
+uv run watchtower check --db demo.db             # terminal 2: "Baseline saved", nothing reported
+# add a listing to examples/fake_listings/listings.json, then:
+uv run watchtower check --db demo.db             # the new listing is reported
+uv run watchtower check --db demo.db             # "No changes": no false alert after a restart
+```
+
+See [examples/fake_listings/README.md](examples/fake_listings/README.md) for the server.
 
 ## Example (target API)
 

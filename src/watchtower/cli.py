@@ -7,12 +7,14 @@ import sys
 from pathlib import Path
 
 from watchtower.core.watcher import Watcher
+from watchtower.diffs.items import ItemDiff
 from watchtower.diffs.text import TextDiff
 from watchtower.errors import WatchtowerError
 from watchtower.events import EventBus
 from watchtower.notifiers.console import ConsoleNotifier
 from watchtower.sources.fake import FakeSource
 from watchtower.sources.file import FileSource
+from watchtower.sources.webpage import WebPageSource
 from watchtower.storage.snapshots import SnapshotStore
 
 DEMO_PAGES = [
@@ -23,6 +25,10 @@ DEMO_PAGES = [
         "2. Flat in Krowodrza - 2800 PLN [NEW!]\n"
     ),
 ]
+
+# 127.0.0.1 rather than localhost: localhost can resolve to IPv6 first, while
+# the fake listings server listens on IPv4 only.
+LISTINGS_URL = "http://127.0.0.1:8000/listings"
 
 
 def build_demo_watcher() -> Watcher:
@@ -61,6 +67,32 @@ def run_demo_check() -> int:
 
     sys.stdout.write("\n=== Demo completed successfully ===\n")
     return 0
+
+
+def build_listings_watcher(url: str, store: SnapshotStore) -> Watcher:
+    """Create the M2 demo watcher for the fake listings server.
+
+    The watcher is hard-coded until YAML config arrives in M3. Its source
+    follows the HTML contract in examples/fake_listings/README.md.
+
+    Args:
+        url: Address of the listings page.
+        store: Store keeping the last snapshot between runs.
+    """
+    source = WebPageSource(
+        url,
+        selector=".offer",
+        title_selector=".title",
+        price_selector=".price",
+        key_attribute="data-id",
+    )
+    return Watcher(
+        name="Krakow flats",
+        source=source,
+        differ=ItemDiff(),
+        notifiers=[ConsoleNotifier(stream=sys.stdout)],
+        store=store,
+    )
 
 
 def run_saved_check(watcher: Watcher, store: SnapshotStore) -> int:
@@ -144,7 +176,8 @@ def main(argv: list[str] | None = None) -> int:
         "target",
         nargs="?",
         default=None,
-        help="Path to a file to check, or omitted to run the built-in M1 demo",
+        help="File to check; without it, --db checks the demo listings page "
+        "and no arguments run the built-in M1 demo",
     )
     check_parser.add_argument(
         "--db",
@@ -153,6 +186,11 @@ def main(argv: list[str] | None = None) -> int:
         metavar="PATH",
         help="SQLite file that keeps the last snapshot between runs",
     )
+    check_parser.add_argument(
+        "--url",
+        default=LISTINGS_URL,
+        help=f"listings page checked by --db without a file (default: {LISTINGS_URL})",
+    )
 
     args = parser.parse_args(argv)
 
@@ -160,6 +198,9 @@ def main(argv: list[str] | None = None) -> int:
         try:
             if args.target:
                 return run_file_check(Path(args.target), args.db)
+            if args.db is not None:
+                store = SnapshotStore(args.db)
+                return run_saved_check(build_listings_watcher(args.url, store), store)
             return run_demo_check()
         except WatchtowerError as err:
             sys.stderr.write(f"Error: {err}\n")
