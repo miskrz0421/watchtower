@@ -48,6 +48,8 @@ packages = ["src/watchtower"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Lets tests import the demo server as `fake_listings.server`.
+pythonpath = ["examples"]
 addopts = "-ra --strict-markers"
 markers = [
     "gui: tests that need PySide6 and a display (run with: uv run pytest -m gui)",
