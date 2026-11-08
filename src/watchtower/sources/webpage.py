@@ -8,6 +8,7 @@ from urllib.parse import urljoin
 import httpx
 from bs4 import BeautifulSoup, Tag
 
+from watchtower.errors import ParseError
 from watchtower.models import Item
 from watchtower.registry import register_source
 from watchtower.sources.http import DEFAULT_TIMEOUT_SECONDS, HttpSource
@@ -58,14 +59,23 @@ class WebPageSource(HttpSource):
 
         Returns:
             An iterable of Items, one per element matching `selector`.
+
+        Raises:
+            ParseError: If a matched element has no title.
         """
         soup = BeautifulSoup(raw, "html.parser")
-        return [self._to_item(element) for element in soup.select(self.selector)]
+        return [
+            self._to_item(element, position)
+            for position, element in enumerate(soup.select(self.selector), start=1)
+        ]
 
-    def _to_item(self, element: Tag) -> Item:
-        """Convert one matched element to an Item."""
+    def _to_item(self, element: Tag, position: int) -> Item:
+        """Convert one matched element to an Item, validating its title."""
         href = self._href(element)
         title = self._title(element)
+        if not title:
+            msg = f"Element {position} matching {self.selector!r} has no title"
+            raise ParseError(msg)
         return Item(
             key=self._key(element, href, title),
             title=title,

@@ -20,6 +20,10 @@ class _Feed(Protocol):
 
     entries: Sequence[Mapping[str, object]]
 
+    def get(self, key: str) -> object:
+        """Return a top-level field, or None when feedparser did not set it."""
+        ...
+
 
 @register_source("rss")
 class RSSSource(HttpSource):
@@ -37,9 +41,15 @@ class RSSSource(HttpSource):
             An iterable of Items, one per feed entry.
 
         Raises:
-            ParseError: If an entry has no id or link, or no title.
+            ParseError: If the text is not an RSS or Atom feed, or an entry
+                has no id or link, or no title.
         """
         feed = cast(_Feed, feedparser.parse(raw))
+        if not feed.entries and not feed.get("version"):
+            # feedparser does not raise on an error page; without this check an
+            # outage would look like every Item was removed.
+            msg = "Response is not an RSS or Atom feed"
+            raise ParseError(msg)
         return [_to_item(entry, position) for position, entry in enumerate(feed.entries, start=1)]
 
 

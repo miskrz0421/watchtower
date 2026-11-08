@@ -302,6 +302,21 @@ def test_rss_source_rejects_entry_with_blank_title() -> None:
         list(RSSSource(url="http://example.test/feed.xml").parse(raw))
 
 
+@pytest.mark.parametrize(
+    "raw",
+    ["<html><body>502 Bad Gateway</body></html>", "not a feed", ""],
+)
+def test_rss_source_rejects_text_that_is_not_a_feed(raw: str) -> None:
+    """Test that an error page is a parse error, not a feed whose Items were all removed."""
+    with pytest.raises(ParseError, match="not an RSS or Atom feed"):
+        list(RSSSource(url="http://example.test/feed.xml").parse(raw))
+
+
+def test_rss_source_accepts_feed_without_entries() -> None:
+    """Test that a valid feed with no entries gives no Items."""
+    assert list(RSSSource(url="http://example.test/feed.xml").parse(_feed())) == []
+
+
 def test_rss_snapshot_propagates_parse_error() -> None:
     """Test that validation errors survive the Source.snapshot() template method."""
     raw = _feed("<item><title>No key</title></item>")
@@ -407,6 +422,35 @@ def test_webpage_source_uses_element_text_as_title() -> None:
     assert items[0].title == "Whole offer text"
     assert items[0].key == "Whole offer text"
     assert items[0].price is None
+
+
+@pytest.mark.parametrize(
+    ("html", "title_selector"),
+    [
+        ('<div class="offer"><span class="price">2 800 zł</span></div>', ".title"),
+        ('<div class="offer"><span class="title">  </span></div>', ".title"),
+        ('<div class="offer"></div>', None),
+    ],
+)
+def test_webpage_source_rejects_element_without_title(
+    html: str, title_selector: str | None
+) -> None:
+    """Test that an element without a title is a parse error instead of an Item keyed ''."""
+    source = WebPageSource(
+        url="http://example.test/listings",
+        selector=".offer",
+        title_selector=title_selector,
+    )
+
+    with pytest.raises(ParseError, match="Element 1 matching '.offer' has no title"):
+        list(source.parse(html))
+
+
+def test_webpage_source_with_no_matching_elements_gives_no_items() -> None:
+    """Test that a page without matching elements gives an empty list (ADR-012)."""
+    source = WebPageSource(url="http://example.test/listings", selector=".offer")
+
+    assert list(source.parse("<html><body><p>No offers</p></body></html>")) == []
 
 
 def test_webpage_snapshot_parses_downloaded_html() -> None:

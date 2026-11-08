@@ -127,6 +127,11 @@ PR that makes the decision.
   belongs in the source's documentation. Two elements with the same key become one Item. Because
   `CHANGED` keeps both versions, notifiers and filters can compare before and after. New sources
   must state their own key rule.
+- Broken input: a response that is not an RSS or Atom feed, and a matched page element without
+  a title, raise `ParseError`, so the check fails instead of reporting every Item as removed or
+  collapsing untitled elements into one Item with an empty key. A selector that matches nothing
+  is not an error, because an empty listing is a valid page; after a site redesign this shows
+  up as every Item removed once, and the selector has to be updated.
 
 ## ADR-013: Where snapshots are loaded and saved
 - Status: accepted · M2
