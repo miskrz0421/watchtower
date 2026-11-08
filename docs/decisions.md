@@ -101,30 +101,7 @@ PR that makes the decision.
 - Decision: a `DiscordNotifier` posts to a webhook. Console and desktop tray notifications are
   the other two notifiers.
 
-## ADR-013: Where snapshots are loaded and saved
-- Status: accepted · M2
-- Context: a watcher has to remember the last snapshot between runs, or every restart is a new
-  baseline and changes made while the program was off are never reported.
-- Decision: `Watcher` takes an optional `SnapshotStore`. On every check it fetches first, then
-  loads the previous snapshot from the store, diffs, notifies, and **saves the new snapshot
-  last**. A failed fetch saves nothing. Without a store the watcher keeps the last snapshot in
-  memory, as in M1. The store opens a new SQLite connection for every `load`/`save`.
-- Why save last: if the program crashes or the save fails after notifying, the next check
-  compares against the old snapshot and repeats the alert. Saving first would lose that alert
-  for good. A duplicate notification is better than a missed flat.
-- Why load on every check instead of once: the store stays the only source of truth, so another
-  process (later the GUI, or deleting the file) cannot leave the watcher with a stale copy.
-  Reading one row by primary key is cheap next to an HTTP request.
-- Why a connection per call: `sqlite3` connections must not be shared between threads, and from
-  M5 the engine runs in a worker thread. A short connection per call is correct from any thread
-  and needs no closing logic in the watcher.
-- Alternatives: load once in `__init__` (stale state, and constructing a watcher would touch the
-  disk); save before notifying (can lose alerts); one long-lived connection (breaks across
-  threads); a required store with an in-memory implementation (an extra class with no use yet).
-- Consequences: `initial_snapshot` is removed, since the store replaces it. A failed save makes
-  the check fail (`CheckCompleted(ok=False)`) even though the notifiers already ran.
-
-## ADR-014: Item keys and what counts as a changed item
+## ADR-012: Item keys and what counts as a changed item
 - Status: accepted · M2
 - Context: `ItemDiff` compares snapshots by identity, so every Item needs a key that stays the
   same between checks. Without one, a changed price or a reordered page would make every Item
@@ -150,3 +127,26 @@ PR that makes the decision.
   belongs in the source's documentation. Two elements with the same key become one Item. Because
   `CHANGED` keeps both versions, notifiers and filters can compare before and after. New sources
   must state their own key rule.
+
+## ADR-013: Where snapshots are loaded and saved
+- Status: accepted · M2
+- Context: a watcher has to remember the last snapshot between runs, or every restart is a new
+  baseline and changes made while the program was off are never reported.
+- Decision: `Watcher` takes an optional `SnapshotStore`. On every check it fetches first, then
+  loads the previous snapshot from the store, diffs, notifies, and **saves the new snapshot
+  last**. A failed fetch saves nothing. Without a store the watcher keeps the last snapshot in
+  memory, as in M1. The store opens a new SQLite connection for every `load`/`save`.
+- Why save last: if the program crashes or the save fails after notifying, the next check
+  compares against the old snapshot and repeats the alert. Saving first would lose that alert
+  for good. A duplicate notification is better than a missed flat.
+- Why load on every check instead of once: the store stays the only source of truth, so another
+  process (later the GUI, or deleting the file) cannot leave the watcher with a stale copy.
+  Reading one row by primary key is cheap next to an HTTP request.
+- Why a connection per call: `sqlite3` connections must not be shared between threads, and from
+  M5 the engine runs in a worker thread. A short connection per call is correct from any thread
+  and needs no closing logic in the watcher.
+- Alternatives: load once in `__init__` (stale state, and constructing a watcher would touch the
+  disk); save before notifying (can lose alerts); one long-lived connection (breaks across
+  threads); a required store with an in-memory implementation (an extra class with no use yet).
+- Consequences: `initial_snapshot` is removed, since the store replaces it. A failed save makes
+  the check fail (`CheckCompleted(ok=False)`) even though the notifiers already ran.

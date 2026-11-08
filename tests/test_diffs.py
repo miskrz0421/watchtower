@@ -147,7 +147,7 @@ def test_item_diff_ignores_item_order() -> None:
 
 
 def test_item_diff_collapses_duplicate_keys_to_the_last_item() -> None:
-    """Test that a repeated key identifies one item, the last occurrence (ADR-014)."""
+    """Test that a repeated key identifies one item, the last occurrence (ADR-012)."""
     before = Item(key="1", title="Old")
     first = Item(key="1", title="First")
     last = Item(key="1", title="Last")
