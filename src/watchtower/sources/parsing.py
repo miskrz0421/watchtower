@@ -4,8 +4,14 @@ from __future__ import annotations
 
 import re
 
-_WHITESPACE = re.compile(r"\s+")
-_NUMBER = re.compile(r"\d+(?:[.,]\d+)*")
+# A space (also a non-breaking one) between digits that is followed by exactly
+# three digits groups thousands, as in "2 999"; other spaces separate numbers.
+_THOUSANDS_SPACE = re.compile(r"(?<=\d)\s(?=\d{3}(?!\d))")
+_NUMBER = r"\d+(?:[.,]\d+)*"
+_CURRENCY = r"(?:zł|zl|pln|eur|usd|gbp)(?![^\W\d_])|[€$£]"
+_NUMBER_BEFORE_CURRENCY = re.compile(rf"({_NUMBER})\s*(?:{_CURRENCY})", re.IGNORECASE)
+_NUMBER_AFTER_CURRENCY = re.compile(rf"(?:{_CURRENCY})\s*({_NUMBER})", re.IGNORECASE)
+_ANY_NUMBER = re.compile(_NUMBER)
 
 
 def parse_price(text: str) -> float | None:
@@ -15,14 +21,29 @@ def parse_price(text: str) -> float | None:
     dots or commas. A single dot or comma followed by one or two digits is
     treated as a decimal separator.
 
+    When the text holds several numbers, as in `2 rooms, 45 m², 2 800 zł`,
+    the first number written next to a currency (zł, PLN, €, EUR, $, USD,
+    £, GBP) is the price. Without a currency, the first number is used.
+
     Args:
         text: Text containing a price.
 
     Returns:
         The price as a float, or None if the text contains no price.
     """
-    compact = _WHITESPACE.sub("", text)
-    match = _NUMBER.search(compact)
+    compact = _THOUSANDS_SPACE.sub("", text)
+    with_currency = [
+        match
+        for match in (
+            _NUMBER_BEFORE_CURRENCY.search(compact),
+            _NUMBER_AFTER_CURRENCY.search(compact),
+        )
+        if match is not None
+    ]
+    if with_currency:
+        first = min(with_currency, key=lambda match: match.start())
+        return _to_float(first.group(1))
+    match = _ANY_NUMBER.search(compact)
     if match is None:
         return None
     return _to_float(match.group())

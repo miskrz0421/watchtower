@@ -150,3 +150,20 @@ PR that makes the decision.
   threads); a required store with an in-memory implementation (an extra class with no use yet).
 - Consequences: `initial_snapshot` is removed, since the store replaces it. A failed save makes
   the check fail (`CheckCompleted(ok=False)`) even though the notifiers already ran.
+
+## ADR-014: Reading a price out of free text
+- Status: accepted · M2
+- Context: RSS entries carry the price inside the description, together with other numbers
+  ("2 rooms, 45 m², 2 800 zł"). Prices are written with spaces, dots or commas as thousands
+  separators and a comma or dot for decimals.
+- Decision: `parse_price` joins digits only across a space followed by exactly three digits
+  (`2 800` is one number, `Flat 2, 2 800` is two). The first number written next to a currency
+  (zł, PLN, €, EUR, $, USD, £, GBP) is the price; without a currency, the first number is.
+  A single dot or comma before three digits groups thousands, before one or two digits it
+  starts the decimals.
+- Alternatives: removing all whitespace first (merges separate numbers: `Flat 2, 2 800 zł`
+  became 2.28); always taking the last number (breaks on "2 800 zł/mies., 2 rooms"); a full
+  price library (one more dependency for one function, ADR-009).
+- Consequences: text without a currency and with several numbers can still give the wrong
+  one, so a source that knows where the price is (`WebPageSource` with a `price_selector`)
+  passes only that text.
