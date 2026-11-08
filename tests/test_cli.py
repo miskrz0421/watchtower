@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import socket
 from pathlib import Path
 
 import pytest
 
+from conftest import SAMPLE_LISTINGS, FakeListings
 from watchtower.cli import main
 
 
@@ -79,3 +81,34 @@ def test_cli_no_args_prints_help(capsys: pytest.CaptureFixture[str]) -> None:
 
     captured = capsys.readouterr()
     assert "usage: watchtower" in captured.out
+
+
+@pytest.mark.network
+def test_cli_check_db_reports_new_listing(
+    tmp_path: Path, fake_listings: FakeListings, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Test the M2 demo: baseline, a new listing is reported, then no false alert."""
+    url = f"{fake_listings.base_url}/listings"
+    args = ["check", "--db", str(tmp_path / "watchtower.db"), "--url", url]
+
+    assert main(args) == 0
+    assert "Baseline saved for 'Krakow flats'" in capsys.readouterr().out
+
+    new = {"id": "3", "title": "Flat Krowodrza", "price": 2800, "description": ""}
+    fake_listings.write([*SAMPLE_LISTINGS, new])
+    assert main(args) == 0
+    assert "Flat Krowodrza" in capsys.readouterr().out
+
+    assert main(args) == 0
+    assert "No changes for 'Krakow flats'" in capsys.readouterr().out
+
+
+def test_cli_check_db_server_down(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """Test that an unreachable listings page gives an error message, not a traceback."""
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        free_port = sock.getsockname()[1]
+    url = f"http://127.0.0.1:{free_port}/listings"
+
+    assert main(["check", "--db", str(tmp_path / "watchtower.db"), "--url", url]) == 1
+    assert "Error:" in capsys.readouterr().err
