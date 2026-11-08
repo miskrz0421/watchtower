@@ -17,3 +17,7 @@ class ParseError(WatchtowerError):
 
 class NotifyError(WatchtowerError):
     """Raised when an error occurs while dispatching a notification."""
+
+
+class StorageError(WatchtowerError):
+    """Raised when saved state cannot be read from or written to storage."""

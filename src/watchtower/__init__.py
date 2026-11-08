@@ -8,6 +8,7 @@ from watchtower.errors import (
     NotifyError,
     ParseError,
     SourceError,
+    StorageError,
     WatchtowerError,
 )
 from watchtower.events import (
@@ -79,6 +80,7 @@ __all__ = [
     "SnapshotStore",
     "Source",
     "SourceError",
+    "StorageError",
     "TextDiff",
     "Watcher",
     "WatcherState",
