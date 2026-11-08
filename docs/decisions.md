@@ -101,6 +101,38 @@ PR that makes the decision.
 - Decision: a `DiscordNotifier` posts to a webhook. Console and desktop tray notifications are
   the other two notifiers.
 
+## ADR-012: Item keys and what counts as a changed item
+- Status: accepted · M2
+- Context: `ItemDiff` compares snapshots by identity, so every Item needs a key that stays the
+  same between checks. Without one, a changed price or a reordered page would make every Item
+  look new or removed. We also had to say which field differences are worth reporting.
+- Decision: each source assigns every Item a stable key.
+  - RSS: the entry `id` (guid), or its `link` when there is no id. An entry with neither, or
+    without a title, is a `ParseError`.
+  - Web page: the value of `key_attribute` when it is set and not blank, otherwise the first
+    link's `href`, otherwise the title. The key uses the href exactly as written (a relative
+    path stays relative), while `Item.url` is made absolute for following the link.
+  - `ItemDiff` groups both snapshots by key. A key only in the new snapshot is `NEW`, a key only
+    in the old one is `REMOVED`, and a key in both whose Item differs in **any** field (title,
+    url, price, text, published) is `CHANGED`. For `CHANGED`, `Change.item` is the new version
+    and `Change.before` the previous one; for `REMOVED`, `Change.item` is the removed Item.
+  - Duplicate keys within one snapshot collapse to the last occurrence, because a key identifies
+    one Item. The first run (`old is None`) still reports nothing (ADR-004).
+- Alternatives: comparing snapshots as plain sets (a changed Item becomes a remove plus a new
+  one, losing `before`); using the element position as key (breaks when the page order changes);
+  using the title as key (titles change and may repeat); using the absolute href as key (a domain
+  change would make every Item look new); reporting only price changes (misses title or text
+  updates).
+- Consequences: changing how a source derives keys makes every Item look new once, so the rule
+  belongs in the source's documentation. Two elements with the same key become one Item. Because
+  `CHANGED` keeps both versions, notifiers and filters can compare before and after. New sources
+  must state their own key rule.
+- Broken input: a response that is not an RSS or Atom feed, and a matched page element without
+  a title, raise `ParseError`, so the check fails instead of reporting every Item as removed or
+  collapsing untitled elements into one Item with an empty key. A selector that matches nothing
+  is not an error, because an empty listing is a valid page; after a site redesign this shows
+  up as every Item removed once, and the selector has to be updated.
+
 ## ADR-013: Where snapshots are loaded and saved
 - Status: accepted · M2
 - Context: a watcher has to remember the last snapshot between runs, or every restart is a new
@@ -123,3 +155,20 @@ PR that makes the decision.
   threads); a required store with an in-memory implementation (an extra class with no use yet).
 - Consequences: `initial_snapshot` is removed, since the store replaces it. A failed save makes
   the check fail (`CheckCompleted(ok=False)`) even though the notifiers already ran.
+
+## ADR-014: Reading a price out of free text
+- Status: accepted · M2
+- Context: RSS entries carry the price inside the description, together with other numbers
+  ("2 rooms, 45 m², 2 800 zł"). Prices are written with spaces, dots or commas as thousands
+  separators and a comma or dot for decimals.
+- Decision: `parse_price` joins digits only across a space followed by exactly three digits
+  (`2 800` is one number, `Flat 2, 2 800` is two). The first number written next to a currency
+  (zł, PLN, €, EUR, $, USD, £, GBP) is the price; without a currency, the first number is.
+  A single dot or comma before three digits groups thousands, before one or two digits it
+  starts the decimals.
+- Alternatives: removing all whitespace first (merges separate numbers: `Flat 2, 2 800 zł`
+  became 2.28); always taking the last number (breaks on "2 800 zł/mies., 2 rooms"); a full
+  price library (one more dependency for one function, ADR-009).
+- Consequences: text without a currency and with several numbers can still give the wrong
+  one, so a source that knows where the price is (`WebPageSource` with a `price_selector`)
+  passes only that text.
