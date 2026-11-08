@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import io
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta, timezone
 
 import pytest
 
@@ -43,14 +43,14 @@ def test_console_notifier_outputs_text_diff() -> None:
                 kind=ChangeKind.NEW,
                 item=Item(key="1", title="Flat Krowodrza", price=2800.0),
             ),
-            "New: Flat Krowodrza, 2800 zł",
+            "New: Flat Krowodrza, 2 800 zł",
         ),
         (
             Change(
                 kind=ChangeKind.REMOVED,
                 item=Item(key="1", title="Flat Kazimierz", price=2400.5),
             ),
-            "Removed: Flat Kazimierz, 2400.5 zł",
+            "Removed: Flat Kazimierz, 2 400,50 zł",
         ),
         (
             Change(
@@ -58,11 +58,34 @@ def test_console_notifier_outputs_text_diff() -> None:
                 item=Item(key="1", title="Flat Stare Miasto", price=3200.0),
                 before=Item(key="1", title="Flat Stare Miasto", price=3500.0),
             ),
-            "Changed: Flat Stare Miasto, 3200 zł",
+            "Changed: Flat Stare Miasto, 3 500 zł → 3 200 zł",
         ),
         (
             Change(kind=ChangeKind.NEW, item=Item(key="1", title="Flat without price")),
             "New: Flat without price",
+        ),
+        (
+            Change(
+                kind=ChangeKind.CHANGED,
+                item=Item(key="1", title="Flat Nowa Huta", price=2100.0),
+                before=Item(key="1", title="Flat Nowa Huta"),
+            ),
+            "Changed: Flat Nowa Huta, no price → 2 100 zł",
+        ),
+        (
+            Change(
+                kind=ChangeKind.CHANGED,
+                item=Item(key="1", title="Flat Podgórze, renovated", price=3000.0),
+                before=Item(key="1", title="Flat Podgórze", price=3000.0),
+            ),
+            "Changed: Flat Podgórze, renovated, 3 000 zł (was: Flat Podgórze)",
+        ),
+        (
+            Change(
+                kind=ChangeKind.NEW,
+                item=Item(key="1", title="House Zabierzów", price=1234567.5),
+            ),
+            "New: House Zabierzów, 1 234 567,50 zł",
         ),
     ],
 )
@@ -82,6 +105,22 @@ def test_console_notifier_formats_item_changes(change: Change, expected: str) ->
 
     assert expected in output
     assert "Item(" not in output
+
+
+def test_console_notifier_shows_times_in_its_time_zone() -> None:
+    """Test that the UTC event time is displayed in the notifier's time zone."""
+    stream = io.StringIO()
+    notifier = ConsoleNotifier(stream=stream, tz=timezone(timedelta(hours=1)))
+    event = ChangeEvent(
+        watcher_name="flat_watcher",
+        timestamp=datetime(2026, 11, 8, 21, 30, 0, tzinfo=UTC),
+        changes=(),
+        summary="No changes",
+    )
+
+    notifier.send(event)
+
+    assert "[2026-11-08 22:30:00] [flat_watcher] No changes" in stream.getvalue()
 
 
 def test_registry_creates_console_notifier() -> None:
