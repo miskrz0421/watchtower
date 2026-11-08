@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Flats for rent</title>
+    <link>http://example.test/listings</link>
+    <description>Watchtower RSS fixture</description>
+    <item>
+      <guid isPermaLink="false">entry-1</guid>
+      <title>Flat Krowodrza</title>
+      <link>http://example.test/flats/1</link>
+      <description>2 800 zł. Two rooms.</description>
+      <pubDate>Mon, 06 Nov 2023 12:00:00 +0200</pubDate>
+    </item>
+    <item>
+      <title>Flat Kazimierz</title>
+      <link>http://example.test/flats/2</link>
+      <description>No price yet.</description>
+      <pubDate>Tue, 07 Nov 2023 08:30:00 -0500</pubDate>
+    </item>
+    <item>
+      <guid isPermaLink="false">entry-3</guid>
+      <title>Flat Podgórze</title>
+      <link>http://example.test/flats/3</link>
+      <description>3 200 zł. Three rooms.</description>
+      <pubDate>Wed, 08 Nov 2023 00:15:00 +0530</pubDate>
+    </item>
+    <item>
+      <guid isPermaLink="false">entry-4</guid>
+      <title>Flat without date</title>
+      <link>http://example.test/flats/4</link>
+      <description>1 900 zł.</description>
+    </item>
+  </channel>
+</rss>

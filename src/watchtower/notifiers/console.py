@@ -38,7 +38,16 @@ class ConsoleNotifier(Notifier):
                 if not change.diff_text.endswith("\n"):
                     self.stream.write("\n")
             elif change.item is not None:
-                self.stream.write(f"- [{change.kind.value.upper()}] {change.item}\n")
+                label = change.kind.value.capitalize()
+                self.stream.write(f"{label}: {change.item.title}{_price(change.item.price)}\n")
             else:
-                self.stream.write(f"- [{change.kind.value.upper()}]\n")
+                self.stream.write(f"{change.kind.value.capitalize()}\n")
         self.stream.flush()
+
+
+def _price(price: float | None) -> str:
+    """Format an optional price as a readable suffix, e.g. ', 2800 zł'."""
+    if price is None:
+        return ""
+    number = str(int(price)) if price.is_integer() else f"{price:g}"
+    return f", {number} zł"
