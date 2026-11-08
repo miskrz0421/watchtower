@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+from pathlib import Path
 
 import pytest
 
@@ -10,9 +11,12 @@ from watchtower.core.watcher import Watcher
 from watchtower.diffs.text import TextDiff
 from watchtower.errors import SourceError
 from watchtower.events import ChangeDetected, CheckCompleted, EventBus, FetchFailed
+from watchtower.models import ChangeEvent, Snapshot
+from watchtower.notifiers.base import Notifier
 from watchtower.notifiers.console import ConsoleNotifier
 from watchtower.sources.base import Source
 from watchtower.sources.fake import FakeSource
+from watchtower.storage.snapshots import SnapshotStore
 
 
 class FailingSource(Source):
@@ -113,6 +117,7 @@ def test_watcher_properties_and_encapsulation() -> None:
     assert watcher.differ is differ
     assert watcher.notifiers == [notifier]
     assert watcher.event_bus is bus
+    assert watcher.store is None
     assert watcher.last_snapshot is None
 
     # Verify attributes cannot be directly reassigned (read-only properties)
@@ -120,3 +125,91 @@ def test_watcher_properties_and_encapsulation() -> None:
         watcher.name = "new_name"  # type: ignore[misc]
     with pytest.raises(AttributeError):
         watcher.source = source  # type: ignore[misc]
+
+
+class RecordingNotifier(Notifier):
+    """Notifier that keeps every event it receives."""
+
+    def __init__(self) -> None:
+        """Start with no received events."""
+        self.events: list[ChangeEvent] = []
+
+    def send(self, event: ChangeEvent) -> None:
+        """Record the event."""
+        self.events.append(event)
+
+
+def make_watcher(store: SnapshotStore, *pages: str, notifier: Notifier | None = None) -> Watcher:
+    """Build a text watcher named 'page' that replays the given pages."""
+    return Watcher(
+        name="page",
+        source=FakeSource(contents=list(pages)),
+        differ=TextDiff(),
+        notifiers=[notifier or RecordingNotifier()],
+        store=store,
+    )
+
+
+@pytest.fixture
+def store(tmp_path: Path) -> SnapshotStore:
+    """Store in a fresh database file."""
+    return SnapshotStore(tmp_path / "watchtower.db")
+
+
+def test_first_check_saves_baseline(store: SnapshotStore) -> None:
+    """Test that the first check reports nothing but saves its snapshot (ADR-004)."""
+    watcher = make_watcher(store, "version 1\n")
+
+    assert watcher.check_once() is None
+    assert store.load("page") == watcher.last_snapshot
+
+
+def test_restart_with_same_store_does_not_realert(store: SnapshotStore) -> None:
+    """Test that a new Watcher continues from the saved snapshot, as after a restart."""
+    make_watcher(store, "version 1\n").check_once()
+
+    notifier = RecordingNotifier()
+    assert make_watcher(store, "version 1\n", notifier=notifier).check_once() is None
+    assert notifier.events == []
+
+
+def test_restart_with_same_store_detects_change(store: SnapshotStore) -> None:
+    """Test that a change made while the program was not running is reported."""
+    make_watcher(store, "version 1\n").check_once()
+
+    event = make_watcher(store, "version 2\n").check_once()
+
+    assert event is not None
+    assert "+version 2" in (event.changes[0].diff_text or "")
+
+
+def test_failed_fetch_keeps_saved_snapshot(store: SnapshotStore) -> None:
+    """Test that a failing source does not overwrite the saved baseline."""
+    make_watcher(store, "version 1\n").check_once()
+    baseline = store.load("page")
+    failing = Watcher(name="page", source=FailingSource(), differ=TextDiff(), store=store)
+
+    with pytest.raises(SourceError):
+        failing.check_once()
+
+    assert store.load("page") == baseline
+
+
+def test_snapshot_is_saved_after_notifying(store: SnapshotStore) -> None:
+    """Test that notifiers run while the old snapshot is still saved (ADR-013)."""
+    seen_during_send: list[Snapshot | None] = []
+
+    class StoreCheckingNotifier(Notifier):
+        def send(self, event: ChangeEvent) -> None:
+            """Record what the store holds while notifiers are running."""
+            seen_during_send.append(store.load("page"))
+
+    make_watcher(store, "version 1\n").check_once()
+    baseline = store.load("page")
+
+    make_watcher(store, "version 2\n", notifier=StoreCheckingNotifier()).check_once()
+
+    assert seen_during_send == [baseline]
+    saved = store.load("page")
+    assert saved is not None
+    assert saved.raw_text == "version 2\n"
