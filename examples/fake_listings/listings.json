@@ -1,0 +1,14 @@
+[
+  {
+    "id": "1",
+    "title": "Flat Stare Miasto",
+    "price": 3500,
+    "description": "Two rooms, 48 m², five minutes from the Main Square."
+  },
+  {
+    "id": "2",
+    "title": "Studio Kazimierz",
+    "price": 2400,
+    "description": "Small studio on the third floor, no lift."
+  }
+]

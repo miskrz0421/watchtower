@@ -12,6 +12,7 @@ from watchtower.events import ChangeDetected, CheckCompleted, Event, EventBus, F
 from watchtower.models import Change, ChangeEvent, Snapshot
 from watchtower.notifiers.base import Notifier
 from watchtower.sources.base import Source
+from watchtower.storage.snapshots import SnapshotStore
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +24,11 @@ class Watcher:
     and detection events to the central EventBus for global observers (such
     as history recorders and UI bridges) while dispatching ChangeEvents
     directly to its configured Notifiers.
+
+    With a SnapshotStore, the previous snapshot is loaded from the store on
+    every check and the new one is saved after notifying, so the watcher
+    remembers its state across restarts. Without a store, it only remembers
+    the last snapshot in memory (see ADR-013).
     """
 
     def __init__(
@@ -32,7 +38,7 @@ class Watcher:
         differ: Differ,
         notifiers: Sequence[Notifier] | None = None,
         event_bus: EventBus | None = None,
-        initial_snapshot: Snapshot | None = None,
+        store: SnapshotStore | None = None,
     ) -> None:
         """Initialize a Watcher pipeline.
 
@@ -42,14 +48,15 @@ class Watcher:
             differ: Differ strategy used to detect changes against previous snapshot.
             notifiers: Target notifiers that will receive detected change events.
             event_bus: Optional global event bus for system-wide observers.
-            initial_snapshot: Optional starting baseline snapshot.
+            store: Optional store that keeps the last snapshot between runs.
         """
         self._name = name
         self._source = source
         self._differ = differ
         self._notifiers: list[Notifier] = list(notifiers) if notifiers is not None else []
         self._event_bus = event_bus
-        self._last_snapshot = initial_snapshot
+        self._store = store
+        self._last_snapshot: Snapshot | None = None
 
     @property
     def name(self) -> str:
@@ -77,6 +84,11 @@ class Watcher:
         return self._event_bus
 
     @property
+    def store(self) -> SnapshotStore | None:
+        """Store keeping the last snapshot between runs, if configured."""
+        return self._store
+
+    @property
     def last_snapshot(self) -> Snapshot | None:
         """Most recently captured snapshot, or None if no check has run yet."""
         return self._last_snapshot
@@ -86,10 +98,22 @@ class Watcher:
         if self._event_bus is not None:
             self._event_bus.publish(event)
 
+    def _previous_snapshot(self) -> Snapshot | None:
+        """Return the snapshot to compare against, from the store if there is one."""
+        if self._store is not None:
+            return self._store.load(self._name)
+        return self._last_snapshot
+
+    def _remember(self, snapshot: Snapshot) -> None:
+        """Keep the snapshot as the baseline for the next check."""
+        self._last_snapshot = snapshot
+        if self._store is not None:
+            self._store.save(self._name, snapshot)
+
     def _fetch_and_diff(self) -> tuple[list[Change], Snapshot]:
         """Fetch a new snapshot and compute changes against previous snapshot."""
         new_snapshot = self._source.snapshot()
-        changes = self._differ.diff(self._last_snapshot, new_snapshot)
+        changes = self._differ.diff(self._previous_snapshot(), new_snapshot)
         return changes, new_snapshot
 
     def _dispatch_notifiers(self, event: ChangeEvent) -> None:
@@ -142,10 +166,12 @@ class Watcher:
         """Execute a single check cycle through the monitoring pipeline.
 
         1. Fetches a new snapshot from the configured source.
-        2. Computes changes against the previous snapshot.
-        3. Updates the stored snapshot reference.
-        4. If changes are detected, constructs a ChangeEvent, sends it to all
+        2. Loads the previous snapshot and computes changes against it.
+        3. If changes are detected, constructs a ChangeEvent, sends it to all
            configured notifiers, and publishes ChangeDetected on the EventBus.
+        4. Saves the new snapshot as the baseline for the next check. This
+           happens after notifying, so a failed save can repeat an alert but
+           never lose one. A failed fetch saves nothing.
         5. Publishes CheckCompleted with execution status and duration.
 
         Returns:
@@ -159,11 +185,11 @@ class Watcher:
 
         try:
             changes, new_snapshot = self._fetch_and_diff()
-            self._last_snapshot = new_snapshot
 
             event: ChangeEvent | None = None
             if changes:
                 event = self._handle_changes(changes, now)
+            self._remember(new_snapshot)
 
             duration = time.perf_counter() - start_time
             self._emit(

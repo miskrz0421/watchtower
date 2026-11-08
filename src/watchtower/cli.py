@@ -8,10 +8,12 @@ from pathlib import Path
 
 from watchtower.core.watcher import Watcher
 from watchtower.diffs.text import TextDiff
+from watchtower.errors import WatchtowerError
 from watchtower.events import EventBus
 from watchtower.notifiers.console import ConsoleNotifier
 from watchtower.sources.fake import FakeSource
 from watchtower.sources.file import FileSource
+from watchtower.storage.snapshots import SnapshotStore
 
 DEMO_PAGES = [
     "Welcome to Watchtower Listings\n1. Flat in Stare Miasto - 3500 PLN\n",
@@ -61,30 +63,65 @@ def run_demo_check() -> int:
     return 0
 
 
-def run_file_check(file_path: Path) -> int:
-    """Run a check against a specific local file.
+def run_saved_check(watcher: Watcher, store: SnapshotStore) -> int:
+    """Run one check of a watcher whose state is kept in a store.
+
+    Changes are printed by the watcher's notifiers. This function only says
+    when there was nothing to print, so a quiet run never looks like it did
+    nothing by mistake.
+
+    Args:
+        watcher: Watcher to check; it must use `store`.
+        store: Store holding the watcher's previous snapshot.
+
+    Returns:
+        0 on success.
+
+    Raises:
+        WatchtowerError: If the source or the store fails.
+    """
+    is_first_run = store.load(watcher.name) is None
+    event = watcher.check_once()
+
+    if is_first_run:
+        sys.stdout.write(f"Baseline saved for {watcher.name!r}. Run again to see changes.\n")
+    elif event is None:
+        sys.stdout.write(f"No changes for {watcher.name!r}.\n")
+    return 0
+
+
+def run_file_check(file_path: Path, db_path: Path | None) -> int:
+    """Check a local file for changes since the previous run.
 
     Args:
         file_path: Path to the monitored file.
+        db_path: SQLite file keeping the previous contents. Required, since
+            without it there is nothing to compare with.
 
     Returns:
         0 on success, non-zero on failure.
+
+    Raises:
+        WatchtowerError: If the file cannot be read or the store fails.
     """
     if not file_path.exists():
         sys.stderr.write(f"Error: File not found: {file_path}\n")
         return 1
+    if db_path is None:
+        sys.stderr.write(
+            "Error: checking a file needs --db PATH to compare it with the previous run\n"
+        )
+        return 2
 
-    source = FileSource(path=file_path)
-    differ = TextDiff()
-    notifier = ConsoleNotifier()
+    store = SnapshotStore(db_path)
     watcher = Watcher(
-        name=f"File: {file_path.name}",
-        source=source,
-        differ=differ,
-        notifiers=[notifier],
+        name=f"file:{file_path.resolve()}",
+        source=FileSource(path=file_path),
+        differ=TextDiff(),
+        notifiers=[ConsoleNotifier(stream=sys.stdout)],
+        store=store,
     )
-    watcher.check_once()
-    return 0
+    return run_saved_check(watcher, store)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -109,13 +146,24 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="Path to a file to check, or omitted to run the built-in M1 demo",
     )
+    check_parser.add_argument(
+        "--db",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help="SQLite file that keeps the last snapshot between runs",
+    )
 
     args = parser.parse_args(argv)
 
     if args.command == "check":
-        if args.target:
-            return run_file_check(Path(args.target))
-        return run_demo_check()
+        try:
+            if args.target:
+                return run_file_check(Path(args.target), args.db)
+            return run_demo_check()
+        except WatchtowerError as err:
+            sys.stderr.write(f"Error: {err}\n")
+            return 1
 
     parser.print_help()
     return 0
