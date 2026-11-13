@@ -50,7 +50,14 @@ def parse_price(text: str) -> float | None:
 
 
 def _to_float(number: str) -> float:
-    """Convert a numeric string with grouping or decimal separators to a float."""
+    """Convert a numeric string with grouping or decimal separators to a float.
+
+    Args:
+        number: Digits with optional dots and commas, such as `2.400,50`.
+
+    Returns:
+        The number as a float.
+    """
     if "," in number and "." in number:
         decimal = "," if number.rfind(",") > number.rfind(".") else "."
         grouping = "." if decimal == "," else ","
@@ -63,7 +70,15 @@ def _to_float(number: str) -> float:
 
 
 def _normalize_single_separator(number: str, separator: str) -> str:
-    """Decide whether the only separator in a number groups thousands or starts decimals."""
+    """Decide whether the only separator in a number groups thousands or starts decimals.
+
+    Args:
+        number: Digits containing one kind of separator.
+        separator: That separator, a dot or a comma.
+
+    Returns:
+        The number written with a dot as the decimal separator, if it has decimals.
+    """
     parts = number.split(separator)
     if len(parts) > 2 or len(parts[1]) == 3:
         return "".join(parts)

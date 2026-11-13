@@ -43,7 +43,7 @@ class SnapshotStore:
         Raises:
             StorageError: If the database cannot be opened.
         """
-        self.path = Path(path)
+        self._path = Path(path)
         with self._connect() as conn:
             conn.execute(_CREATE_TABLE)
 
@@ -91,19 +91,22 @@ class SnapshotStore:
         closes the connection. A plain `with sqlite3.connect(...)` would
         commit but leave the connection open.
 
+        Yields:
+            The open connection.
+
         Raises:
             StorageError: If SQLite reports an error.
         """
         try:
-            conn = sqlite3.connect(self.path)
+            conn = sqlite3.connect(self._path)
         except sqlite3.Error as err:
-            msg = f"Cannot open snapshot database {self.path}: {err}"
+            msg = f"Cannot open snapshot database {self._path}: {err}"
             raise StorageError(msg) from err
         try:
             with conn:
                 yield conn
         except sqlite3.Error as err:
-            msg = f"Snapshot database {self.path} failed: {err}"
+            msg = f"Snapshot database {self._path} failed: {err}"
             raise StorageError(msg) from err
         finally:
             conn.close()

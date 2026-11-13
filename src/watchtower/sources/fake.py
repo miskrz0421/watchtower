@@ -40,12 +40,23 @@ class FakeSource(Source):
         self._current_items: tuple[Item, ...] = ()
 
     def fetch(self) -> str:
-        """Return the raw text of the next scripted entry."""
+        """Return the raw text of the next scripted entry.
+
+        Returns:
+            Raw text of the entry; the last entry repeats once the script ends.
+        """
         current = self._snapshots[self._step]
         self._current_items = current.items
         self._step = min(self._step + 1, len(self._snapshots) - 1)
         return current.raw_text
 
     def parse(self, raw: str) -> Iterable[Item]:
-        """Return the items of the entry selected by the last `fetch()`."""
+        """Return the items of the entry selected by the last `fetch()`.
+
+        Args:
+            raw: Ignored; the items come from the scripted entry.
+
+        Returns:
+            The scripted items.
+        """
         return self._current_items

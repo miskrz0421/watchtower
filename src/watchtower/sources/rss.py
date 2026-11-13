@@ -21,7 +21,14 @@ class _Feed(Protocol):
     entries: Sequence[Mapping[str, object]]
 
     def get(self, key: str) -> object:
-        """Return a top-level field, or None when feedparser did not set it."""
+        """Return a top-level field, or None when feedparser did not set it.
+
+        Args:
+            key: Name of the field.
+
+        Returns:
+            The field's value, or None.
+        """
         ...
 
 
@@ -54,7 +61,18 @@ class RSSSource(HttpSource):
 
 
 def _to_item(entry: Mapping[str, object], position: int) -> Item:
-    """Convert one feed entry to an Item, validating the required fields."""
+    """Convert one feed entry to an Item, validating the required fields.
+
+    Args:
+        entry: Feed entry parsed by feedparser.
+        position: Number of the entry in the feed, from 1, for error messages.
+
+    Returns:
+        The entry as an Item.
+
+    Raises:
+        ParseError: If the entry has no id or link, no title, or an invalid date.
+    """
     key = _non_empty_string(entry.get("id")) or _non_empty_string(entry.get("link"))
     if key is None:
         msg = f"Feed entry {position} has no id or link"
@@ -82,7 +100,14 @@ def _to_item(entry: Mapping[str, object], position: int) -> Item:
 
 
 def _non_empty_string(value: object) -> str | None:
-    """Return a non-blank string, or None when the value is missing or blank."""
+    """Return a non-blank string, or None when the value is missing or blank.
+
+    Args:
+        value: Field value from feedparser.
+
+    Returns:
+        The value as a string, or None.
+    """
     if value is None:
         return None
     text = str(value)
@@ -90,7 +115,18 @@ def _non_empty_string(value: object) -> str | None:
 
 
 def _published(entry: Mapping[str, object], position: int) -> datetime | None:
-    """Return the entry's publication time in UTC, if the feed has one."""
+    """Return the entry's publication time in UTC, if the feed has one.
+
+    Args:
+        entry: Feed entry parsed by feedparser.
+        position: Number of the entry in the feed, from 1, for error messages.
+
+    Returns:
+        The publication time, falling back to the update time, or None.
+
+    Raises:
+        ParseError: If the date is present but invalid.
+    """
     parsed = entry.get("published_parsed") or entry.get("updated_parsed")
     if parsed is None:
         return None

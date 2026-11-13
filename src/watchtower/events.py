@@ -12,11 +12,15 @@ from typing import Any, TypeVar
 
 from watchtower.models import ChangeEvent
 
-logger = logging.getLogger(__name__)
+_logger = logging.getLogger(__name__)
 
 
 def _utc_now() -> datetime:
-    """Return the current time in UTC."""
+    """Return the current time in UTC.
+
+    Returns:
+        The current time with the UTC time zone set.
+    """
     return datetime.now(UTC)
 
 
@@ -36,7 +40,7 @@ class Event:
     timestamp: datetime = field(default_factory=_utc_now)
 
 
-T = TypeVar("T", bound=Event)
+_T = TypeVar("_T", bound=Event)
 
 
 @dataclass(frozen=True)
@@ -87,7 +91,7 @@ class EventBus:
         """Initialize an empty EventBus with no subscribers."""
         self._subscribers: dict[type[Event], list[Callable[[Any], None]]] = defaultdict(list)
 
-    def subscribe(self, event_type: type[T], handler: Callable[[T], None]) -> None:
+    def subscribe(self, event_type: type[_T], handler: Callable[[_T], None]) -> None:
         """Register an event handler for a specific event class.
 
         Args:
@@ -96,7 +100,7 @@ class EventBus:
         """
         self._subscribers[event_type].append(handler)
 
-    def unsubscribe(self, event_type: type[T], handler: Callable[[T], None]) -> None:
+    def unsubscribe(self, event_type: type[_T], handler: Callable[[_T], None]) -> None:
         """Unregister a previously subscribed event handler.
 
         Args:
@@ -123,7 +127,7 @@ class EventBus:
                     try:
                         handler(event)
                     except Exception:
-                        logger.exception(
+                        _logger.exception(
                             "Unhandled exception in subscriber %r for event %r",
                             handler,
                             event,

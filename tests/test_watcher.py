@@ -23,10 +23,12 @@ class FailingSource(Source):
     """Source that simulates runtime failure."""
 
     def fetch(self) -> str:
+        """Fail with a SourceError."""
         msg = "Fetch timeout error"
         raise SourceError(msg)
 
     def parse(self, raw: str) -> list[None]:
+        """Return no items; never reached."""
         return []
 
 

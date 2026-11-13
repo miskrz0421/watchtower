@@ -19,8 +19,10 @@ dependencies = [
     "pyyaml>=6.0",
 ]
 
+# Everything a developer runs has a name here: `uv run <name>`.
 [project.scripts]
 watchtower = "watchtower.cli:main"
+watchtower-fake-listings = "fake_listings.server:main"
 
 [project.optional-dependencies]
 gui = ["pyside6>=6.7"]
@@ -42,34 +44,56 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/watchtower"]
+# fake_listings is the demo website; installing it gives it an entry point and
+# lets the tests import it.
+packages = ["src/watchtower", "examples/fake_listings"]
 
 # ---------------------------------------------------------------- tooling
+# Everything the tools write (caches, coverage data) goes to .artifacts/, so
+# the project root holds only files that belong to the project.
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-# Lets tests import the demo server as `fake_listings.server`.
-pythonpath = ["examples"]
-addopts = "-ra --strict-markers"
+cache_dir = ".artifacts/pytest"
+addopts = "-ra --strict-markers --cov"
 markers = [
     "gui: tests that need PySide6 and a display (run with: uv run pytest -m gui)",
     "network: tests that hit a real local HTTP server",
 ]
 
+[tool.coverage.run]
+source = ["watchtower"]
+data_file = ".artifacts/coverage/data"
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+# Tests fail below this; raise it when coverage grows, never lower it.
+fail_under = 95
+
+[tool.coverage.html]
+directory = ".artifacts/coverage/html"
+
 [tool.ruff]
 line-length = 100
 target-version = "py312"
 src = ["src", "tests"]
+cache-dir = ".artifacts/ruff"
 
 [tool.ruff.lint]
-# E/F: pycodestyle + pyflakes, I: isort, B: bugbear, UP: pyupgrade, SIM: simplify
-select = ["E", "F", "I", "B", "UP", "SIM"]
+# E/F: pycodestyle + pyflakes, I: isort, B: bugbear, UP: pyupgrade, SIM: simplify,
+# D: every module, class and function has a docstring
+select = ["E", "F", "I", "B", "UP", "SIM", "D"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
 
 [tool.mypy]
 python_version = "3.12"
 strict = true
 mypy_path = "src"
 packages = ["watchtower"]
+cache_dir = ".artifacts/mypy"
 
 [[tool.mypy.overrides]]
 module = ["feedparser.*", "bs4.*"]

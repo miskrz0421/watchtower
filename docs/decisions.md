@@ -23,7 +23,8 @@ PR that makes the decision.
   packaging. We are 3 people with 6 one-week milestones.
 - Decision: keep the core pipeline, plugins, state machine, SQLite history, GUI (Watchers,
   Changes, Reports, Log tabs) and pandas reports. Move the LLM plugin, asyncio, processors,
-  entry points, the GUI watcher editor and PyInstaller to stretch goals.
+  plugin discovery through package entry points, the GUI watcher editor and PyInstaller to
+  stretch goals.
 - Alternatives: everything (not doable); no GUI (loses the most visible part).
 - Consequences: every milestone has a visible demo.
 
@@ -172,3 +173,54 @@ PR that makes the decision.
 - Consequences: text without a currency and with several numbers can still give the wrong
   one, so a source that knows where the price is (`WebPageSource` with a `price_selector`)
   passes only that text.
+
+## ADR-015: What is public and how private names are marked
+- Status: accepted · after M2
+- Context: the top-level package re-exported 44 names, including test helpers (`FakeSource`),
+  serialisation details (`ItemDict`) and every built-in plugin, and module-level names such as
+  `logger` looked public. A reader could not tell what a user of the framework may rely on.
+- Decision: there are three levels.
+  1. `watchtower` exports only what is needed to build a watcher in code or to write a plugin:
+     `Watcher`, `SnapshotStore`, the models, the events and `EventBus`, the plugin base classes,
+     the errors and the registry functions.
+  2. Each subpackage lists its public classes in the `__all__` of its `__init__.py`. Built-in
+     plugins are imported from there (`from watchtower.sources import WebPageSource`) or
+     created by name through the registry.
+  3. Anything used only inside its own file or class starts with an underscore: `_logger`,
+     helper functions, constants, instance attributes.
+- Module files keep plain names (`storage/snapshots.py`, not `storage/_snapshots.py`). With
+  level 2 every module would get the underscore, so it would mark nothing; inside the package
+  we import from the module that defines a name, which keeps imports free of cycles.
+- Alternatives: underscore-prefixed module files (the same information as `__all__`, at the
+  cost of renaming every file and import); exporting everything from the top level (hides what
+  is stable); no top-level exports (every user needs to know the internal layout).
+- Consequences: importing `watchtower` still imports the plugin packages, so built-in plugins
+  are registered. A new public name has to be added to an `__all__` on purpose.
+
+## ADR-016: One way to run things, one place for generated files, a coverage floor
+- Status: accepted · after M2
+- Context: a new developer had to find the right pytest, ruff and mypy commands in the README,
+  the demo website was started by file path, tools left four cache folders in the project
+  root, and nothing said how much of the code the tests have to reach.
+- Decision:
+  - Developer commands are recipes in the `justfile`, run with [just](https://just.systems):
+    `just test`, `just format`, `just check`. `just` alone lists them with a description
+    each, so the file is the documentation, and a recipe can grow without anyone relearning
+    it. CI runs `just check`, the same recipe we run before pushing.
+  - What the application itself offers is a command under `[project.scripts]` in
+    `pyproject.toml`: `watchtower` and `watchtower-fake-listings`. For the second one the
+    `examples/fake_listings` folder is installed as a package next to `watchtower`, which
+    also lets the tests import it without a `pythonpath` setting.
+  - pytest, ruff, mypy and coverage write to `.artifacts/`, set once per tool in
+    `pyproject.toml`; the project root holds only files that belong to the project.
+  - The tests measure coverage and fail below 95%. The number is just under what we had when
+    the rule was added (97%); it is raised as coverage grows and never lowered.
+- Alternatives: a Makefile (needs tabs, awkward on Windows, built for files rather than
+  commands); only `uv run ...` lines in the README (nothing keeps them up to date); a Python
+  task runner such as poethepoet (one more dependency inside the project, less known); a 100%
+  threshold (forces tests for lines like `if TYPE_CHECKING`, or exclusion comments in the
+  code); a threshold only as a team rule (nobody checks it).
+- Consequences: just is one more tool to install (`uv tool install rust-just`); every recipe
+  is a plain `uv run` line, so the project still works without it. `uv sync` is needed after
+  pulling a change to the entry points. The wheel contains the demo website; acceptable for a
+  project that is not published.

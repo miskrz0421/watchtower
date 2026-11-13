@@ -17,7 +17,7 @@ from watchtower.sources.file import FileSource
 from watchtower.sources.webpage import WebPageSource
 from watchtower.storage.snapshots import SnapshotStore
 
-DEMO_PAGES = [
+_DEMO_PAGES = [
     "Welcome to Watchtower Listings\n1. Flat in Stare Miasto - 3500 PLN\n",
     (
         "Welcome to Watchtower Listings\n"
@@ -28,21 +28,25 @@ DEMO_PAGES = [
 
 # 127.0.0.1 rather than localhost: localhost can resolve to IPv6 first, while
 # the fake listings server listens on IPv4 only.
-LISTINGS_URL = "http://127.0.0.1:8000/listings"
+_LISTINGS_URL = "http://127.0.0.1:8000/listings"
 
 
-def build_demo_watcher() -> Watcher:
-    """Create a watcher that replays the scripted demo pages."""
+def _build_demo_watcher() -> Watcher:
+    """Create a watcher that replays the scripted demo pages.
+
+    Returns:
+        A watcher with a FakeSource, a TextDiff and a console notifier.
+    """
     return Watcher(
         name="Krakow Flats Watcher",
-        source=FakeSource(contents=DEMO_PAGES),
+        source=FakeSource(contents=_DEMO_PAGES),
         differ=TextDiff(),
-        notifiers=[ConsoleNotifier(stream=sys.stdout)],
+        notifiers=[ConsoleNotifier()],
         event_bus=EventBus(),
     )
 
 
-def run_demo_check() -> int:
+def _run_demo_check() -> int:
     """Run an end-to-end M1 demonstration check using FakeSource and TextDiff.
 
     Executes two consecutive checks:
@@ -52,24 +56,24 @@ def run_demo_check() -> int:
     Returns:
         0 on success.
     """
-    sys.stdout.write("=== Watchtower M1 Demo: Foundations ===\n")
-    watcher = build_demo_watcher()
+    print("=== Watchtower M1 Demo: Foundations ===")
+    watcher = _build_demo_watcher()
 
-    sys.stdout.write("\n[Step 1] Running initial check (establishing baseline)...\n")
+    print("\n[Step 1] Running initial check (establishing baseline)...")
     event1 = watcher.check_once()
     if event1 is None:
-        sys.stdout.write("-> Baseline captured successfully. No changes reported (as expected).\n")
+        print("-> Baseline captured successfully. No changes reported (as expected).")
 
-    sys.stdout.write("\n[Step 2] Running second check (detecting content change)...\n")
+    print("\n[Step 2] Running second check (detecting content change)...")
     event2 = watcher.check_once()
     if event2 is not None:
-        sys.stdout.write("-> Change successfully detected and printed above!\n")
+        print("-> Change successfully detected and printed above!")
 
-    sys.stdout.write("\n=== Demo completed successfully ===\n")
+    print("\n=== Demo completed successfully ===")
     return 0
 
 
-def build_listings_watcher(url: str, store: SnapshotStore) -> Watcher:
+def _build_listings_watcher(url: str, store: SnapshotStore) -> Watcher:
     """Create the M2 demo watcher for the fake listings server.
 
     The watcher is hard-coded until YAML config arrives in M3. Its source
@@ -78,6 +82,9 @@ def build_listings_watcher(url: str, store: SnapshotStore) -> Watcher:
     Args:
         url: Address of the listings page.
         store: Store keeping the last snapshot between runs.
+
+    Returns:
+        A watcher with a WebPageSource, an ItemDiff and a console notifier.
     """
     source = WebPageSource(
         url,
@@ -90,12 +97,12 @@ def build_listings_watcher(url: str, store: SnapshotStore) -> Watcher:
         name="Krakow flats",
         source=source,
         differ=ItemDiff(),
-        notifiers=[ConsoleNotifier(stream=sys.stdout)],
+        notifiers=[ConsoleNotifier()],
         store=store,
     )
 
 
-def run_saved_check(watcher: Watcher, store: SnapshotStore) -> int:
+def _run_saved_check(watcher: Watcher, store: SnapshotStore) -> int:
     """Run one check of a watcher whose state is kept in a store.
 
     Changes are printed by the watcher's notifiers. This function only says
@@ -116,13 +123,13 @@ def run_saved_check(watcher: Watcher, store: SnapshotStore) -> int:
     event = watcher.check_once()
 
     if is_first_run:
-        sys.stdout.write(f"Baseline saved for {watcher.name!r}. Run again to see changes.\n")
+        print(f"Baseline saved for {watcher.name!r}. Run again to see changes.")
     elif event is None:
-        sys.stdout.write(f"No changes for {watcher.name!r}.\n")
+        print(f"No changes for {watcher.name!r}.")
     return 0
 
 
-def run_file_check(file_path: Path, db_path: Path | None) -> int:
+def _run_file_check(file_path: Path, db_path: Path | None) -> int:
     """Check a local file for changes since the previous run.
 
     Args:
@@ -137,11 +144,12 @@ def run_file_check(file_path: Path, db_path: Path | None) -> int:
         WatchtowerError: If the file cannot be read or the store fails.
     """
     if not file_path.exists():
-        sys.stderr.write(f"Error: File not found: {file_path}\n")
+        print(f"Error: File not found: {file_path}", file=sys.stderr)
         return 1
     if db_path is None:
-        sys.stderr.write(
-            "Error: checking a file needs --db PATH to compare it with the previous run\n"
+        print(
+            "Error: checking a file needs --db PATH to compare it with the previous run",
+            file=sys.stderr,
         )
         return 2
 
@@ -150,20 +158,17 @@ def run_file_check(file_path: Path, db_path: Path | None) -> int:
         name=f"file:{file_path.resolve()}",
         source=FileSource(path=file_path),
         differ=TextDiff(),
-        notifiers=[ConsoleNotifier(stream=sys.stdout)],
+        notifiers=[ConsoleNotifier()],
         store=store,
     )
-    return run_saved_check(watcher, store)
+    return _run_saved_check(watcher, store)
 
 
-def main(argv: list[str] | None = None) -> int:
-    """Main CLI entrypoint for watchtower.
-
-    Args:
-        argv: Command-line arguments (defaults to sys.argv[1:]).
+def _build_parser() -> argparse.ArgumentParser:
+    """Create the command-line parser with its subcommands.
 
     Returns:
-        Exit code integer (0 for success).
+        The parser for the `watchtower` command.
     """
     parser = argparse.ArgumentParser(
         prog="watchtower",
@@ -175,6 +180,7 @@ def main(argv: list[str] | None = None) -> int:
     check_parser.add_argument(
         "target",
         nargs="?",
+        type=Path,
         default=None,
         help="File to check; without it, --db checks the demo listings page "
         "and no arguments run the built-in M1 demo",
@@ -188,27 +194,49 @@ def main(argv: list[str] | None = None) -> int:
     )
     check_parser.add_argument(
         "--url",
-        default=LISTINGS_URL,
-        help=f"listings page checked by --db without a file (default: {LISTINGS_URL})",
+        default=_LISTINGS_URL,
+        help=f"listings page checked by --db without a file (default: {_LISTINGS_URL})",
     )
+    return parser
 
+
+def _run_check(args: argparse.Namespace) -> int:
+    """Run the variant of the `check` command chosen by the arguments.
+
+    Args:
+        args: Parsed arguments of the `check` command.
+
+    Returns:
+        Exit code of the check.
+
+    Raises:
+        WatchtowerError: If a source or the store fails.
+    """
+    if args.target is not None:
+        return _run_file_check(args.target, args.db)
+    if args.db is not None:
+        store = SnapshotStore(args.db)
+        return _run_saved_check(_build_listings_watcher(args.url, store), store)
+    return _run_demo_check()
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Run the `watchtower` command.
+
+    Args:
+        argv: Command-line arguments; None means `sys.argv[1:]`.
+
+    Returns:
+        Exit code: 0 on success, 1 on a Watchtower error, 2 on wrong usage.
+    """
+    parser = _build_parser()
     args = parser.parse_args(argv)
 
-    if args.command == "check":
-        try:
-            if args.target:
-                return run_file_check(Path(args.target), args.db)
-            if args.db is not None:
-                store = SnapshotStore(args.db)
-                return run_saved_check(build_listings_watcher(args.url, store), store)
-            return run_demo_check()
-        except WatchtowerError as err:
-            sys.stderr.write(f"Error: {err}\n")
-            return 1
-
-    parser.print_help()
-    return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())
+    if args.command != "check":
+        parser.print_help()
+        return 0
+    try:
+        return _run_check(args)
+    except WatchtowerError as err:
+        print(f"Error: {err}", file=sys.stderr)
+        return 1

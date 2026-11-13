@@ -27,7 +27,7 @@ Qt**: the GUI is just another subscriber on the event bus.
 
 ```
 src/watchtower/
-├── __init__.py      public API re-exports (Watcher, built-in plugins)
+├── __init__.py      public API: Watcher, models, events, plugin base classes, registry
 ├── models.py        Item, Snapshot, Change, ChangeKind, ChangeEvent
 ├── errors.py        WatchtowerError → SourceError, ParseError, NotifyError
 ├── registry.py      @register_* decorators, create(kind, name, **params)
@@ -43,6 +43,8 @@ src/watchtower/
 ├── reports/         pandas analysis + matplotlib charts
 └── gui/             app, worker thread, EngineBridge, tray, main window
     └── tabs/        changes, watchers, reports, log
+
+What is public and what is private is decided in [ADR-015](decisions.md).
 
 tests/               one test module per area (test_sources.py, test_diffs.py, ...)
 examples/            fake_listings server, example config.yaml

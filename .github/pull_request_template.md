@@ -8,8 +8,6 @@
 
 ## Checklist
 
-- [ ] `uv run pytest` passes
-- [ ] `uv run ruff check .` and `uv run ruff format --check .` are clean
-- [ ] `uv run mypy` is clean
-- [ ] Public classes and functions have docstrings
+- [ ] `just check` passes (lint, format, types, tests with coverage)
+- [ ] Every function and class has a docstring: one sentence, then Args / Returns / Raises if any
 - [ ] Docs are updated if behaviour or a design decision changed
