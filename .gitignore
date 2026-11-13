@@ -8,12 +8,8 @@ dist/
 # uv / virtualenv
 .venv/
 
-# Tooling caches
-.pytest_cache/
-.ruff_cache/
-.mypy_cache/
-.coverage
-htmlcov/
+# Tool caches, coverage data and local demo files (see pyproject.toml)
+.artifacts/
 
 # Watchtower runtime data
 *.db

@@ -49,9 +49,12 @@ build-backend = "hatchling.build"
 packages = ["src/watchtower", "examples/fake_listings"]
 
 # ---------------------------------------------------------------- tooling
+# Everything the tools write (caches, coverage data) goes to .artifacts/, so
+# the project root holds only files that belong to the project.
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+cache_dir = ".artifacts/pytest"
 addopts = "-ra --strict-markers --cov"
 markers = [
     "gui: tests that need PySide6 and a display (run with: uv run pytest -m gui)",
@@ -60,6 +63,7 @@ markers = [
 
 [tool.coverage.run]
 source = ["watchtower"]
+data_file = ".artifacts/coverage/data"
 
 [tool.coverage.report]
 show_missing = true
@@ -67,10 +71,14 @@ skip_covered = true
 # Tests fail below this; raise it when coverage grows, never lower it.
 fail_under = 95
 
+[tool.coverage.html]
+directory = ".artifacts/coverage/html"
+
 [tool.ruff]
 line-length = 100
 target-version = "py312"
 src = ["src", "tests"]
+cache-dir = ".artifacts/ruff"
 
 [tool.ruff.lint]
 # E/F: pycodestyle + pyflakes, I: isort, B: bugbear, UP: pyupgrade, SIM: simplify
@@ -81,6 +89,7 @@ python_version = "3.12"
 strict = true
 mypy_path = "src"
 packages = ["watchtower"]
+cache_dir = ".artifacts/mypy"
 
 [[tool.mypy.overrides]]
 module = ["feedparser.*", "bs4.*"]

@@ -83,13 +83,14 @@ watchers:
 
 ```
 .
-├── pyproject.toml        project metadata, dependencies, tool config (ruff, mypy, pytest)
+├── pyproject.toml        project metadata, dependencies, entry points, tool config
 ├── uv.lock               exact dependency versions (commit this)
 ├── README.md
 ├── .github/              PR template and CI workflow
 ├── docs/                 architecture and design decisions
 ├── src/watchtower/       the package
-└── tests/                pytest tests
+├── tests/                pytest tests
+└── .artifacts/           tool caches and coverage data (generated, not in git)
 ```
 
 See [docs/architecture.md](docs/architecture.md) for the design and
