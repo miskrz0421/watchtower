@@ -33,11 +33,17 @@ class ItemDiff(Differ):
         changes: list[Change] = []
         for key, item in new_by_key.items():
             before = old_by_key.get(key)
+            if before == item:
+                continue
             if before is None:
-                changes.append(Change(kind=ChangeKind.NEW, item=item))
-            elif before != item:
-                changes.append(Change(kind=ChangeKind.CHANGED, item=item, before=before))
-        for key, item in old_by_key.items():
-            if key not in new_by_key:
-                changes.append(Change(kind=ChangeKind.REMOVED, item=item))
+                change = Change(kind=ChangeKind.NEW, item=item)
+            else:
+                change = Change(kind=ChangeKind.CHANGED, item=item, before=before)
+            changes.append(change)
+
+        changes.extend(
+            Change(kind=ChangeKind.REMOVED, item=item)
+            for key, item in old_by_key.items()
+            if key not in new_by_key
+        )
         return changes

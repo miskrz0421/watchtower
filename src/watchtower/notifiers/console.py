@@ -6,7 +6,7 @@ import sys
 from datetime import tzinfo
 from typing import TextIO
 
-from watchtower.models import ChangeEvent, ChangeKind, Item
+from watchtower.models import Change, ChangeEvent, ChangeKind, Item
 from watchtower.notifiers.base import Notifier
 from watchtower.registry import register_notifier
 
@@ -36,16 +36,19 @@ class ConsoleNotifier(Notifier):
         self._stream.write(f"\n[{time_str}] [{event.watcher_name}] {event.summary}\n")
 
         for change in event.changes:
-            if change.kind == ChangeKind.TEXT and change.diff_text:
-                self._stream.write("--- Diff ---\n")
-                self._stream.write(change.diff_text)
-                if not change.diff_text.endswith("\n"):
-                    self._stream.write("\n")
-            elif change.item is not None:
-                self._stream.write(f"{_item_line(change.kind, change.item, change.before)}\n")
-            else:
-                self._stream.write(f"{change.kind.value.capitalize()}\n")
+            self._stream.write(f"{_change_text(change)}\n")
         self._stream.flush()
+
+
+def _change_text(change: Change) -> str:
+    """Describe one change: a text diff, an item line, or just the kind of change."""
+    if change.kind == ChangeKind.TEXT and change.diff_text:
+        text = f"--- Diff ---\n{change.diff_text.removesuffix('\n')}"
+    elif change.item is not None:
+        text = _item_line(change.kind, change.item, change.before)
+    else:
+        text = change.kind.value.capitalize()
+    return text
 
 
 def _item_line(kind: ChangeKind, item: Item, before: Item | None) -> str:
