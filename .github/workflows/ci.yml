@@ -16,7 +16,5 @@ jobs:
       - name: Install Qt system library
         run: sudo apt-get update && sudo apt-get install -y libegl1
       - run: uv sync --frozen
-      - run: uv run ruff check .
-      - run: uv run ruff format --check .
-      - run: uv run mypy
-      - run: uv run pytest
+      - run: uv tool install rust-just
+      - run: just check

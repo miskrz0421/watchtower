@@ -23,19 +23,25 @@ history and reports) or **headless** from the command line.
 
 ## Quick start
 
-Requirements: Python 3.12+ and [uv](https://docs.astral.sh/uv/).
+Requirements: Python 3.12+, [uv](https://docs.astral.sh/uv/) and
+[just](https://just.systems) (`uv tool install rust-just`).
+
+Every developer command is a recipe in the [`justfile`](justfile); `just` alone lists them:
 
 ```bash
-uv sync                    # core + dev tools (dev includes PySide6 for pytest-qt)
-uv sync --all-extras       # + reports (pandas, matplotlib)
-
-uv run pytest              # tests + coverage (fails below 95%)
-uv run ruff check .        # lint
-uv run ruff format .       # format
-uv run mypy                # type check
+just install               # uv sync: the project + dev tools (dev includes PySide6 for pytest-qt)
+just test                  # tests + coverage (fails below 95%)
+just lint                  # report lint problems
+just format                # fix formatting and auto-fixable lint problems
+just typecheck             # mypy
+just check                 # everything CI runs; do this before pushing
+just serve                 # fake listings website for demos
+just watchtower check      # the app; arguments are passed on
 ```
 
-Commands are entry points declared under `[project.scripts]` in `pyproject.toml`
+`uv sync --all-extras` also installs the reports extra (pandas, matplotlib).
+
+The app's own commands are entry points declared under `[project.scripts]` in `pyproject.toml`
 (added milestone by milestone):
 
 ```bash
@@ -53,7 +59,7 @@ uv run watchtower-fake-listings        # fake listings website for demos
 ## M2 demo: remembering state between runs
 
 ```bash
-uv run watchtower-fake-listings          # terminal 1: fake listings site
+just serve                               # terminal 1: fake listings site
 uv run watchtower check --db demo.db     # terminal 2: "Baseline saved", nothing reported
 # add a listing to examples/fake_listings/listings.json, then:
 uv run watchtower check --db demo.db     # the new listing is reported
@@ -84,6 +90,7 @@ watchers:
 ```
 .
 ├── pyproject.toml        project metadata, dependencies, entry points, tool config
+├── justfile              developer commands (`just test`, `just check`, ...)
 ├── uv.lock               exact dependency versions (commit this)
 ├── README.md
 ├── .github/              PR template and CI workflow
