@@ -37,7 +37,7 @@ def _build_demo_watcher() -> Watcher:
         name="Krakow Flats Watcher",
         source=FakeSource(contents=_DEMO_PAGES),
         differ=TextDiff(),
-        notifiers=[ConsoleNotifier(stream=sys.stdout)],
+        notifiers=[ConsoleNotifier()],
         event_bus=EventBus(),
     )
 
@@ -52,20 +52,20 @@ def _run_demo_check() -> int:
     Returns:
         0 on success.
     """
-    sys.stdout.write("=== Watchtower M1 Demo: Foundations ===\n")
+    print("=== Watchtower M1 Demo: Foundations ===")
     watcher = _build_demo_watcher()
 
-    sys.stdout.write("\n[Step 1] Running initial check (establishing baseline)...\n")
+    print("\n[Step 1] Running initial check (establishing baseline)...")
     event1 = watcher.check_once()
     if event1 is None:
-        sys.stdout.write("-> Baseline captured successfully. No changes reported (as expected).\n")
+        print("-> Baseline captured successfully. No changes reported (as expected).")
 
-    sys.stdout.write("\n[Step 2] Running second check (detecting content change)...\n")
+    print("\n[Step 2] Running second check (detecting content change)...")
     event2 = watcher.check_once()
     if event2 is not None:
-        sys.stdout.write("-> Change successfully detected and printed above!\n")
+        print("-> Change successfully detected and printed above!")
 
-    sys.stdout.write("\n=== Demo completed successfully ===\n")
+    print("\n=== Demo completed successfully ===")
     return 0
 
 
@@ -90,7 +90,7 @@ def _build_listings_watcher(url: str, store: SnapshotStore) -> Watcher:
         name="Krakow flats",
         source=source,
         differ=ItemDiff(),
-        notifiers=[ConsoleNotifier(stream=sys.stdout)],
+        notifiers=[ConsoleNotifier()],
         store=store,
     )
 
@@ -116,9 +116,9 @@ def _run_saved_check(watcher: Watcher, store: SnapshotStore) -> int:
     event = watcher.check_once()
 
     if is_first_run:
-        sys.stdout.write(f"Baseline saved for {watcher.name!r}. Run again to see changes.\n")
+        print(f"Baseline saved for {watcher.name!r}. Run again to see changes.")
     elif event is None:
-        sys.stdout.write(f"No changes for {watcher.name!r}.\n")
+        print(f"No changes for {watcher.name!r}.")
     return 0
 
 
@@ -137,11 +137,12 @@ def _run_file_check(file_path: Path, db_path: Path | None) -> int:
         WatchtowerError: If the file cannot be read or the store fails.
     """
     if not file_path.exists():
-        sys.stderr.write(f"Error: File not found: {file_path}\n")
+        print(f"Error: File not found: {file_path}", file=sys.stderr)
         return 1
     if db_path is None:
-        sys.stderr.write(
-            "Error: checking a file needs --db PATH to compare it with the previous run\n"
+        print(
+            "Error: checking a file needs --db PATH to compare it with the previous run",
+            file=sys.stderr,
         )
         return 2
 
@@ -150,7 +151,7 @@ def _run_file_check(file_path: Path, db_path: Path | None) -> int:
         name=f"file:{file_path.resolve()}",
         source=FileSource(path=file_path),
         differ=TextDiff(),
-        notifiers=[ConsoleNotifier(stream=sys.stdout)],
+        notifiers=[ConsoleNotifier()],
         store=store,
     )
     return _run_saved_check(watcher, store)
@@ -230,5 +231,5 @@ def main(argv: list[str] | None = None) -> int:
     try:
         return _run_check(args)
     except WatchtowerError as err:
-        sys.stderr.write(f"Error: {err}\n")
+        print(f"Error: {err}", file=sys.stderr)
         return 1
