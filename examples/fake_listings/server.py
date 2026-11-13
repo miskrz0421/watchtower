@@ -4,9 +4,9 @@ Serves the listings from a JSON file as an HTML page, as JSON and as an RSS
 feed. The file is read again on every request, so editing it while the server
 runs changes the next response, the way a real site gains new offers.
 
-Run from the project root:
+Run it with:
 
-    uv run python examples/fake_listings/server.py
+    uv run watchtower-fake-listings
 """
 
 from __future__ import annotations
@@ -227,7 +227,3 @@ def main(argv: list[str] | None = None) -> None:
             server.serve_forever()
         except KeyboardInterrupt:
             print("\nStopped.")
-
-
-if __name__ == "__main__":
-    main()

@@ -3,8 +3,8 @@
 A tiny flat-rental website for Watchtower demos. It needs nothing but the standard library.
 
 ```bash
-uv run python examples/fake_listings/server.py            # http://127.0.0.1:8000
-uv run python examples/fake_listings/server.py --port 8001 --data my_listings.json
+uv run watchtower-fake-listings            # http://127.0.0.1:8000
+uv run watchtower-fake-listings --port 8001 --data my_listings.json
 ```
 
 | Path | Content |

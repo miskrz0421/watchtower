@@ -35,7 +35,8 @@ uv run ruff format .       # format
 uv run mypy                # type check
 ```
 
-Planned commands (added milestone by milestone):
+Commands are entry points declared under `[project.scripts]` in `pyproject.toml`
+(added milestone by milestone):
 
 ```bash
 uv run watchtower check                # run the built-in demo watcher (M1)
@@ -46,16 +47,17 @@ uv run watchtower run config.yaml      # headless scheduler            (M3)
 uv run watchtower plugins              # list registered plugins       (M3)
 uv run watchtower gui config.yaml      # tray app                      (M5)
 uv run watchtower report --out out/    # export charts                 (M6)
+uv run watchtower-fake-listings        # fake listings website for demos
 ```
 
 ## M2 demo: remembering state between runs
 
 ```bash
-uv run python examples/fake_listings/server.py   # terminal 1: fake listings site
-uv run watchtower check --db demo.db             # terminal 2: "Baseline saved", nothing reported
+uv run watchtower-fake-listings          # terminal 1: fake listings site
+uv run watchtower check --db demo.db     # terminal 2: "Baseline saved", nothing reported
 # add a listing to examples/fake_listings/listings.json, then:
-uv run watchtower check --db demo.db             # the new listing is reported
-uv run watchtower check --db demo.db             # "No changes": no false alert after a restart
+uv run watchtower check --db demo.db     # the new listing is reported
+uv run watchtower check --db demo.db     # "No changes": no false alert after a restart
 ```
 
 See [examples/fake_listings/README.md](examples/fake_listings/README.md) for the server.

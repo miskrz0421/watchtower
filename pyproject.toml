@@ -19,8 +19,10 @@ dependencies = [
     "pyyaml>=6.0",
 ]
 
+# Everything a developer runs has a name here: `uv run <name>`.
 [project.scripts]
 watchtower = "watchtower.cli:main"
+watchtower-fake-listings = "fake_listings.server:main"
 
 [project.optional-dependencies]
 gui = ["pyside6>=6.7"]
@@ -42,14 +44,14 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/watchtower"]
+# fake_listings is the demo website; installing it gives it an entry point and
+# lets the tests import it.
+packages = ["src/watchtower", "examples/fake_listings"]
 
 # ---------------------------------------------------------------- tooling
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-# Lets tests import the demo server as `fake_listings.server`.
-pythonpath = ["examples"]
 addopts = "-ra --strict-markers"
 markers = [
     "gui: tests that need PySide6 and a display (run with: uv run pytest -m gui)",
