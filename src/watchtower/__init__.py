@@ -9,9 +9,11 @@ Importing this package imports those packages too, which registers every
 built-in plugin.
 """
 
-from watchtower.core import Watcher
+from watchtower.config import load_config
+from watchtower.core import Scheduler, Watcher, WatcherBuilder
 from watchtower.diffs import Differ
 from watchtower.errors import (
+    ConfigError,
     NotifyError,
     ParseError,
     SourceError,
@@ -50,6 +52,7 @@ __all__ = [
     "ChangeEvent",
     "ChangeKind",
     "CheckCompleted",
+    "ConfigError",
     "Differ",
     "Event",
     "EventBus",
@@ -59,12 +62,14 @@ __all__ = [
     "Notifier",
     "NotifyError",
     "ParseError",
+    "Scheduler",
     "Snapshot",
     "SnapshotStore",
     "Source",
     "SourceError",
     "StorageError",
     "Watcher",
+    "WatcherBuilder",
     "WatcherState",
     "WatcherStateChanged",
     "WatchtowerError",
@@ -73,6 +78,7 @@ __all__ = [
     "create_notifier",
     "create_source",
     "list_plugins",
+    "load_config",
     "register_differ",
     "register_filter",
     "register_notifier",

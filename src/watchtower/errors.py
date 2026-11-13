@@ -19,5 +19,9 @@ class NotifyError(WatchtowerError):
     """Raised when an error occurs while dispatching a notification."""
 
 
+class ConfigError(WatchtowerError):
+    """Raised when a config file or a watcher description is invalid."""
+
+
 class StorageError(WatchtowerError):
     """Raised when saved state cannot be read from or written to storage."""

@@ -1,0 +1,38 @@
+# Example Watchtower config: two watchers on the fake listings website.
+#
+#   just serve                                  # terminal 1
+#   just watchtower run examples/config.yaml    # terminal 2
+#
+# The format is described in docs/decisions.md, ADR-017.
+
+# SQLite file for the last snapshots and the history; relative to this file.
+database: watchtower.db
+
+watchers:
+  - name: Cheap flats without agencies
+    source:
+      type: webpage
+      url: "http://127.0.0.1:8000/listings"
+      selector: ".offer"
+      title_selector: ".title"
+      price_selector: ".price"
+      key_attribute: "data-id"
+    interval: 30s
+    diff: { type: items }
+    filters:                       # a change must pass all of them
+      - new_items
+      - price_below: 3000
+      - not: { text_contains: agency }
+    notify:
+      - { type: console }
+
+  - name: Listings feed
+    source: { type: rss, url: "http://127.0.0.1:8000/feed.xml" }
+    interval: 1m
+    diff: { type: items }
+    filters:
+      - any:
+          - new_items
+          - price_below: 2500
+    notify:
+      - { type: console }

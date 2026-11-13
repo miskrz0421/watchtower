@@ -15,8 +15,8 @@ history and reports) or **headless** from the command line.
 | Milestone | Theme | Status |
 |---|---|---|
 | M1 | Foundations | ✅ done |
-| M2 | Real data and memory | ⏳ planned |
-| M3 | Config and filters | ⏳ planned |
+| M2 | Real data and memory | ✅ done |
+| M3 | Config and filters | 🚧 in progress |
 | M4 | Robustness and real notifications | ⏳ planned |
 | M5 | Desktop app | ⏳ planned |
 | M6 | Analytics and final demo | ⏳ planned |

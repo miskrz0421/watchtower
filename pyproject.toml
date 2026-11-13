@@ -67,6 +67,8 @@ data_file = ".artifacts/coverage/data"
 
 [tool.coverage.report]
 show_missing = true
+# A stub waiting for its milestone is not code that tests could cover.
+exclude_also = ["raise NotImplementedError"]
 skip_covered = true
 # Tests fail below this; raise it when coverage grows, never lower it.
 fail_under = 95
