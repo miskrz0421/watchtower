@@ -152,12 +152,14 @@ def create_differ(name: str, **params: Any) -> Differ:
     return cls(**params)  # type: ignore[return-value]
 
 
-def create_filter(name: str, **params: Any) -> Filter:
+def create_filter(name: str, *args: Any, **params: Any) -> Filter:
     """Instantiate a registered Filter plugin.
 
     Args:
         name: Registered name of the filter plugin.
-        **params: Arguments passed to the filter constructor.
+        *args: Positional arguments passed to the filter constructor, so the
+            config can say `price_below: 3000` without naming the parameter.
+        **params: Keyword arguments passed to the filter constructor.
 
     Returns:
         An instance of the registered Filter subclass.
@@ -166,7 +168,7 @@ def create_filter(name: str, **params: Any) -> Filter:
         KeyError: If the filter plugin name is not registered.
     """
     cls = _lookup(_FILTERS, "filter", name)
-    return cls(**params)  # type: ignore[return-value]
+    return cls(*args, **params)  # type: ignore[return-value]
 
 
 def create_notifier(name: str, **params: Any) -> Notifier:

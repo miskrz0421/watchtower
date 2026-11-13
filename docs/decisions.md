@@ -215,6 +215,7 @@ PR that makes the decision.
     `pyproject.toml`; the project root holds only files that belong to the project.
   - The tests measure coverage and fail below 95%. The number is just under what we had when
     the rule was added (97%); it is raised as coverage grows and never lowered.
+    Lines that only `raise NotImplementedError` (stubs for a later milestone) are not counted.
 - Alternatives: a Makefile (needs tabs, awkward on Windows, built for files rather than
   commands); only `uv run ...` lines in the README (nothing keeps them up to date); a Python
   task runner such as poethepoet (one more dependency inside the project, less known); a 100%
@@ -224,3 +225,42 @@ PR that makes the decision.
   is a plain `uv run` line, so the project still works without it. `uv sync` is needed after
   pulling a change to the entry points. The wheel contains the demo website; acceptable for a
   project that is not published.
+
+## ADR-017: Config file format
+- Status: accepted · M3
+- Context: users describe watchers in a YAML file; the loader has to turn each entry into
+  plugin objects without knowing any plugin by name.
+- Decision: the file has an optional `database` path and a `watchers` list. Each watcher has
+  `name`, `source`, `diff`, and optionally `interval` (text such as `15m`), `filters` and
+  `notify`. `source`, `diff` and each `notify` entry are mappings with a `type` (the registry
+  name); every other key is passed to the plugin's constructor as a keyword argument.
+- Filters use a shorter form, because most take one value: an entry is either a name
+  (`new_items`) or a mapping with one key, the registry name, whose value is passed as the
+  only positional argument (`price_below: 3000`). The composite filters `all`, `any` and
+  `not` take filter entries as their value, so rules nest. The filters listed under `filters`
+  must all pass.
+- Alternatives: `type` + keyword arguments for filters too (uniform, but `{type: price_below,
+  limit: 3000}` is long for the most common line of a config); a small expression language
+  (`price < 3000 and not agency`: needs a parser of our own).
+- Consequences: `create_filter` accepts positional arguments. A filter with several parameters
+  takes a mapping as its one argument or is written in Python.
+
+## ADR-018: One builder for Python and YAML; observers attach themselves
+- Status: accepted · M3
+- Context: the milestone asks for the same watcher from the fluent Python API and from YAML,
+  and three parts written by three people have to meet: the loader, the scheduler and the
+  history.
+- Decision:
+  - `WatcherBuilder` is a separate class; `Watcher` keeps its plain constructor.
+    `load_config` returns a `Config` holding one builder per watcher and the database path.
+    The caller (the CLI) adds what is shared, the `SnapshotStore` and the `EventBus`, and
+    calls `build()`.
+  - A `Watcher` carries its `interval`; the `Scheduler` only reads it and keeps the due times.
+  - `HistoryRecorder` and `LoggingObserver` have the same `attach(event_bus)` method and
+    subscribe themselves; nothing else knows which events they listen to.
+- Alternatives: chained methods on `Watcher` itself, as first sketched (a watcher would exist
+  half-configured, and its constructor could not check anything); the loader returning built
+  watchers (it would have to open the database, and tests of the loader would need one);
+  intervals kept in the scheduler (the config would have to return pairs).
+- Consequences: the loader never touches the database or the network, so it is tested with
+  plain files. The "same watcher" test compares what the two builders build.

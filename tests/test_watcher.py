@@ -7,11 +7,13 @@ from pathlib import Path
 
 import pytest
 
-from watchtower.core.watcher import Watcher
+from watchtower.core.watcher import DEFAULT_INTERVAL, Watcher
+from watchtower.diffs.items import ItemDiff
 from watchtower.diffs.text import TextDiff
 from watchtower.errors import SourceError
 from watchtower.events import ChangeDetected, CheckCompleted, EventBus, FetchFailed
-from watchtower.models import ChangeEvent, Snapshot
+from watchtower.filters.base import Filter
+from watchtower.models import Change, ChangeEvent, Item, Snapshot
 from watchtower.notifiers.base import Notifier
 from watchtower.notifiers.console import ConsoleNotifier
 from watchtower.sources.base import Source
@@ -120,6 +122,8 @@ def test_watcher_properties_and_encapsulation() -> None:
     assert watcher.notifiers == [notifier]
     assert watcher.event_bus is bus
     assert watcher.store is None
+    assert watcher.filters == []
+    assert watcher.interval == DEFAULT_INTERVAL
     assert watcher.last_snapshot is None
 
     # Verify attributes cannot be directly reassigned (read-only properties)
@@ -215,3 +219,61 @@ def test_snapshot_is_saved_after_notifying(store: SnapshotStore) -> None:
     saved = store.load("page")
     assert saved is not None
     assert saved.raw_text == "version 2\n"
+
+
+class CheaperThan(Filter):
+    """Filter keeping changes whose item costs less than a limit."""
+
+    def __init__(self, limit: float) -> None:
+        """Remember the price limit."""
+        self._limit = limit
+
+    def matches(self, change: Change) -> bool:
+        """Accept a change whose item has a price below the limit."""
+        price = change.item.price if change.item is not None else None
+        return price is not None and price < self._limit
+
+
+def _flats(*prices: float) -> Snapshot:
+    """Build a snapshot with one flat per price, keyed by its position."""
+    items = tuple(
+        Item(key=str(number), title=f"Flat {number}", price=price)
+        for number, price in enumerate(prices, start=1)
+    )
+    return Snapshot(items=items)
+
+
+def test_only_changes_passing_every_filter_are_reported() -> None:
+    """Test that a filtered-out change is left out of the event (ADR-005)."""
+    source = FakeSource(snapshots=[_flats(), _flats(2500, 4000, 1500)])
+    watcher = Watcher(
+        name="flats",
+        source=source,
+        differ=ItemDiff(),
+        filters=[CheaperThan(3000), CheaperThan(2000)],
+    )
+    watcher.check_once()
+
+    event = watcher.check_once()
+
+    assert event is not None
+    assert [change.item.price for change in event.changes if change.item] == [1500]
+
+
+def test_no_event_when_filters_reject_every_change() -> None:
+    """Test that nothing is sent, but the new snapshot is still remembered."""
+    out = io.StringIO()
+    new_snapshot = _flats(4000)
+    watcher = Watcher(
+        name="flats",
+        source=FakeSource(snapshots=[_flats(), new_snapshot]),
+        differ=ItemDiff(),
+        notifiers=[ConsoleNotifier(stream=out)],
+        filters=[CheaperThan(3000)],
+    )
+    watcher.check_once()
+
+    assert watcher.check_once() is None
+    assert out.getvalue() == ""
+    assert watcher.last_snapshot is not None
+    assert watcher.last_snapshot.items == new_snapshot.items

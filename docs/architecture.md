@@ -29,7 +29,7 @@ Qt**: the GUI is just another subscriber on the event bus.
 src/watchtower/
 ├── __init__.py      public API: Watcher, models, events, plugin base classes, registry
 ├── models.py        Item, Snapshot, Change, ChangeKind, ChangeEvent
-├── errors.py        WatchtowerError → SourceError, ParseError, NotifyError
+├── errors.py        WatchtowerError → SourceError, ParseError, NotifyError, StorageError, ConfigError
 ├── registry.py      @register_* decorators, create(kind, name, **params)
 ├── events.py        event dataclasses + EventBus
 ├── cli.py           argparse: check / run / plugins / gui / report
@@ -38,8 +38,9 @@ src/watchtower/
 ├── diffs/           base (Strategy), text, items
 ├── filters/         base (Specification + Composite: And/Or/Not), built-in filters
 ├── notifiers/       base (Adapter), console, discord, desktop, decorators
-├── config/          fluent builder helpers, YAML loader, interval parsing
-├── core/            watcher, states (State), scheduler (Mediator), commands, clock, retry
+├── config/          YAML loader, interval parsing
+├── core/            watcher, builder (Builder), scheduler (Mediator), clock, logging observer,
+│                    states (State), commands, retry
 ├── reports/         pandas analysis + matplotlib charts
 └── gui/             app, worker thread, EngineBridge, tray, main window
     └── tabs/        changes, watchers, reports, log
@@ -67,7 +68,7 @@ These are the contracts between the packages. A change to one needs an entry in
 | **Filter** | What matters (Specification) | `matches(change) → bool`; combine with `&`, `|`, `~`. Filters work on single Changes, not on whole events. |
 | **Notifier** | Where to send it (Adapter) | `send(event)`; raises `NotifyError`. Decorators wrap a notifier and are notifiers themselves. |
 | **EventBus** | Observer hub | `subscribe(event_type, handler)`, `publish(event)`. Synchronous. A failing handler is logged and does not stop the other handlers. |
-| **Watcher** | One configured pipeline + its state | Built with the fluent builder or from YAML. Calls **its own** notifiers directly; the bus is for global observers. |
+| **Watcher** | One configured pipeline + its state | Built with `WatcherBuilder`, directly or by the YAML loader. Has an `interval` but does not schedule itself. Calls **its own** notifiers directly; the bus is for global observers. |
 | **Scheduler** | Decides who runs when (Mediator) | Keeps the next due time per watcher, runs due watchers one at a time, drains the command queue each tick. Time comes from an injected `Clock`. |
 
 ## Events on the bus
@@ -124,7 +125,7 @@ Each thread opens its own connection (`sqlite3` connections must not be shared a
 | Factory / Registry | `registry.py`, used by the YAML loader |
 | Strategy | `diffs/`: TextDiff, ItemDiff |
 | Specification + Composite | `filters/`: `&`, `\|`, `~` → And/Or/Not |
-| Builder | fluent `Watcher(...)` API + YAML loader |
+| Builder | `core/builder.py`: `WatcherBuilder`, used by the YAML loader |
 | Adapter | `notifiers/`: one interface over Discord / tray / console |
 | Decorator | `notifiers/decorators.py`: RateLimited, QuietHours |
 | Observer | `events.py`: EventBus; `gui/bridge.py` |
