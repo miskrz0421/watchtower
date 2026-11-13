@@ -42,6 +42,7 @@ def _register(kind: str, name: str) -> Callable[[type[_T]], type[_T]]:
     """
 
     def decorator(cls: type[_T]) -> type[_T]:
+        """Register the class and return it unchanged."""
         _ALL_REGISTRIES[kind][name] = cls
         return cls
 
@@ -53,6 +54,9 @@ def register_source(name: str) -> Callable[[type[_T]], type[_T]]:
 
     Args:
         name: Unique name for the source plugin.
+
+    Returns:
+        Decorator that registers the class and returns it unchanged.
     """
     return _register("source", name)
 
@@ -62,6 +66,9 @@ def register_differ(name: str) -> Callable[[type[_T]], type[_T]]:
 
     Args:
         name: Unique name for the differ plugin.
+
+    Returns:
+        Decorator that registers the class and returns it unchanged.
     """
     return _register("differ", name)
 
@@ -71,6 +78,9 @@ def register_filter(name: str) -> Callable[[type[_T]], type[_T]]:
 
     Args:
         name: Unique name for the filter plugin.
+
+    Returns:
+        Decorator that registers the class and returns it unchanged.
     """
     return _register("filter", name)
 
@@ -80,6 +90,9 @@ def register_notifier(name: str) -> Callable[[type[_T]], type[_T]]:
 
     Args:
         name: Unique name for the notifier plugin.
+
+    Returns:
+        Decorator that registers the class and returns it unchanged.
     """
     return _register("notifier", name)
 

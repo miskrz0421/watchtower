@@ -16,7 +16,11 @@ _logger = logging.getLogger(__name__)
 
 
 def _utc_now() -> datetime:
-    """Return the current time in UTC."""
+    """Return the current time in UTC.
+
+    Returns:
+        The current time with the UTC time zone set.
+    """
     return datetime.now(UTC)
 
 

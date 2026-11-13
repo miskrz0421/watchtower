@@ -91,6 +91,9 @@ class SnapshotStore:
         closes the connection. A plain `with sqlite3.connect(...)` would
         commit but leave the connection open.
 
+        Yields:
+            The open connection.
+
         Raises:
             StorageError: If SQLite reports an error.
         """

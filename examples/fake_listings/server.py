@@ -57,7 +57,17 @@ def load_listings(path: Path) -> list[Listing]:
 
 
 def _to_listing(entry: dict[str, Any]) -> Listing:
-    """Check one JSON entry and convert it to a Listing."""
+    """Check one JSON entry and convert it to a Listing.
+
+    Args:
+        entry: One element of the JSON list.
+
+    Returns:
+        The entry as a Listing.
+
+    Raises:
+        ValueError: If a field is missing or has the wrong type.
+    """
     try:
         return Listing(
             id=str(entry["id"]),
@@ -71,7 +81,14 @@ def _to_listing(entry: dict[str, Any]) -> Listing:
 
 
 def format_price(price: int) -> str:
-    """Format a price the way Polish sites do, e.g. 2800 -> '2 800 zł'."""
+    """Format a price the way Polish sites do, e.g. 2800 -> '2 800 zł'.
+
+    Args:
+        price: Price in whole złoty.
+
+    Returns:
+        The price with a space between thousands and the currency.
+    """
     return f"{price:,} zł".replace(",", " ")
 
 
@@ -80,6 +97,12 @@ def render_html(listings: list[Listing]) -> str:
 
     Each offer follows the HTML contract agreed with WebPageSource: a
     `div.offer` with a stable `data-id`, an `a.title` and a `span.price`.
+
+    Args:
+        listings: Listings to show, one offer each.
+
+    Returns:
+        The HTML document.
     """
     offers = "\n".join(
         f'  <div class="offer" data-id="{escape(listing["id"])}">\n'
@@ -93,7 +116,14 @@ def render_html(listings: list[Listing]) -> str:
 
 
 def render_detail(listing: Listing) -> str:
-    """Render the page of a single offer, the target of its title link."""
+    """Render the page of a single offer, the target of its title link.
+
+    Args:
+        listing: Listing to show.
+
+    Returns:
+        The HTML document.
+    """
     body = (
         f"<h1>{escape(listing['title'])}</h1>\n"
         f"<p>{format_price(listing['price'])}</p>\n"
@@ -103,7 +133,15 @@ def render_detail(listing: Listing) -> str:
 
 
 def _html_page(title: str, body: str) -> str:
-    """Wrap a body in a minimal HTML document."""
+    """Wrap a body in a minimal HTML document.
+
+    Args:
+        title: Text of the page title.
+        body: HTML placed inside `<body>`.
+
+    Returns:
+        The complete HTML document.
+    """
     return (
         "<!DOCTYPE html>\n"
         f'<html lang="en">\n<head><meta charset="utf-8"><title>{escape(title)}</title></head>\n'
@@ -112,7 +150,14 @@ def _html_page(title: str, body: str) -> str:
 
 
 def render_json(listings: list[Listing]) -> str:
-    """Render the listings as a JSON list."""
+    """Render the listings as a JSON list.
+
+    Args:
+        listings: Listings to include.
+
+    Returns:
+        The JSON text.
+    """
     return json.dumps(listings, ensure_ascii=False, indent=2)
 
 
@@ -122,6 +167,9 @@ def render_rss(listings: list[Listing], base_url: str) -> str:
     Args:
         listings: Listings to include, one feed entry each.
         base_url: Address of the server, used to build absolute links.
+
+    Returns:
+        The feed as XML text.
     """
     entries = "\n".join(
         "    <item>\n"
@@ -154,6 +202,11 @@ class ListingsHandler(BaseHTTPRequestHandler):
 
         The base constructor handles the request immediately, so `data_path`
         must be set before calling it.
+
+        Args:
+            *args: Positional arguments of the base handler.
+            data_path: JSON file holding the listings.
+            **kwargs: Keyword arguments of the base handler.
         """
         self._data_path = data_path
         super().__init__(*args, **kwargs)
@@ -184,7 +237,14 @@ class ListingsHandler(BaseHTTPRequestHandler):
         self._reply(HTTPStatus.NOT_FOUND, "text/plain", f"Not found: {self.path}\n")
 
     def _find_detail(self, listings: list[Listing]) -> Listing | None:
-        """Return the listing addressed by a /flats/<id> path, if any."""
+        """Return the listing addressed by a /flats/<id> path, if any.
+
+        Args:
+            listings: Listings to search.
+
+        Returns:
+            The matching listing, or None if the path is not a known detail page.
+        """
         if not self.path.startswith(_DETAIL_PREFIX):
             return None
         listing_id = self.path.removeprefix(_DETAIL_PREFIX)
@@ -194,11 +254,20 @@ class ListingsHandler(BaseHTTPRequestHandler):
         """Return the server address as the client wrote it in the Host header.
 
         HTTP/1.1 clients always send Host, so the fallback is only for odd clients.
+
+        Returns:
+            The address, such as `http://127.0.0.1:8000`.
         """
         return f"http://{self.headers.get('Host', 'localhost')}"
 
     def _reply(self, status: HTTPStatus, content_type: str, body: str) -> None:
-        """Send a complete UTF-8 response."""
+        """Send a complete UTF-8 response.
+
+        Args:
+            status: HTTP status of the response.
+            content_type: Media type of the body, without the charset.
+            body: Text to send.
+        """
         payload = body.encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", f"{content_type}; charset=utf-8")
@@ -208,13 +277,26 @@ class ListingsHandler(BaseHTTPRequestHandler):
 
 
 def make_server(host: str, port: int, data_path: Path) -> ThreadingHTTPServer:
-    """Create a server for the given data file; port 0 picks a free port."""
+    """Create a server for the given data file.
+
+    Args:
+        host: Address to listen on.
+        port: Port to listen on; 0 picks a free port.
+        data_path: JSON file holding the listings.
+
+    Returns:
+        A server that is bound to the port but not serving yet.
+    """
     handler = partial(ListingsHandler, data_path=data_path)
     return ThreadingHTTPServer((host, port), handler)
 
 
 def main(argv: list[str] | None = None) -> None:
-    """Parse the command line and serve until Ctrl+C."""
+    """Parse the command line and serve until Ctrl+C.
+
+    Args:
+        argv: Command-line arguments; None means `sys.argv[1:]`.
+    """
     parser = argparse.ArgumentParser(description="Serve fake flat listings.")
     parser.add_argument("--host", default=_DEFAULT_HOST)
     parser.add_argument("--port", type=int, default=_DEFAULT_PORT)

@@ -32,7 +32,11 @@ _LISTINGS_URL = "http://127.0.0.1:8000/listings"
 
 
 def _build_demo_watcher() -> Watcher:
-    """Create a watcher that replays the scripted demo pages."""
+    """Create a watcher that replays the scripted demo pages.
+
+    Returns:
+        A watcher with a FakeSource, a TextDiff and a console notifier.
+    """
     return Watcher(
         name="Krakow Flats Watcher",
         source=FakeSource(contents=_DEMO_PAGES),
@@ -78,6 +82,9 @@ def _build_listings_watcher(url: str, store: SnapshotStore) -> Watcher:
     Args:
         url: Address of the listings page.
         store: Store keeping the last snapshot between runs.
+
+    Returns:
+        A watcher with a WebPageSource, an ItemDiff and a console notifier.
     """
     source = WebPageSource(
         url,

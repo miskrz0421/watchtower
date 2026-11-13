@@ -94,30 +94,56 @@ class Watcher:
         return self._last_snapshot
 
     def _emit(self, event: Event) -> None:
-        """Publish an event to the EventBus if one is configured."""
+        """Publish an event to the EventBus if one is configured.
+
+        Args:
+            event: Event to publish.
+        """
         if self._event_bus is not None:
             self._event_bus.publish(event)
 
     def _previous_snapshot(self) -> Snapshot | None:
-        """Return the snapshot to compare against, from the store if there is one."""
+        """Return the snapshot to compare against, from the store if there is one.
+
+        Returns:
+            The previous snapshot, or None before the first check.
+        """
         if self._store is not None:
             return self._store.load(self._name)
         return self._last_snapshot
 
     def _remember(self, snapshot: Snapshot) -> None:
-        """Keep the snapshot as the baseline for the next check."""
+        """Keep the snapshot as the baseline for the next check.
+
+        Args:
+            snapshot: Snapshot taken by the current check.
+
+        Raises:
+            StorageError: If the store cannot save it.
+        """
         self._last_snapshot = snapshot
         if self._store is not None:
             self._store.save(self._name, snapshot)
 
     def _fetch_and_diff(self) -> tuple[list[Change], Snapshot]:
-        """Fetch a new snapshot and compute changes against previous snapshot."""
+        """Fetch a new snapshot and compute changes against previous snapshot.
+
+        Returns:
+            The detected changes and the new snapshot.
+
+        Raises:
+            WatchtowerError: If the source or the store fails.
+        """
         new_snapshot = self._source.snapshot()
         changes = self._differ.diff(self._previous_snapshot(), new_snapshot)
         return changes, new_snapshot
 
     def _dispatch_notifiers(self, event: ChangeEvent) -> None:
-        """Deliver a ChangeEvent to all configured notifiers."""
+        """Deliver a ChangeEvent to all configured notifiers.
+
+        Args:
+            event: Event to deliver.
+        """
         for notifier in self._notifiers:
             try:
                 notifier.send(event)
@@ -125,7 +151,15 @@ class Watcher:
                 _logger.exception("Notifier %r failed for watcher %r", notifier, self._name)
 
     def _handle_changes(self, changes: list[Change], timestamp: datetime) -> ChangeEvent:
-        """Construct ChangeEvent, dispatch to notifiers, and publish ChangeDetected."""
+        """Construct ChangeEvent, dispatch to notifiers, and publish ChangeDetected.
+
+        Args:
+            changes: Changes found by the differ; never empty.
+            timestamp: Time of the check.
+
+        Returns:
+            The event that was sent.
+        """
         summary = f"{len(changes)} change(s) detected"
         event = ChangeEvent(
             watcher_name=self._name,
@@ -144,7 +178,13 @@ class Watcher:
         return event
 
     def _emit_failure(self, err: Exception, duration: float, timestamp: datetime) -> None:
-        """Emit failure lifecycle events to the event bus."""
+        """Emit failure lifecycle events to the event bus.
+
+        Args:
+            err: Error that stopped the check.
+            duration: Seconds the check ran before failing.
+            timestamp: Time of the check.
+        """
         self._emit(
             FetchFailed(
                 watcher_name=self._name,

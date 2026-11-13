@@ -48,7 +48,11 @@ class Item:
         return f"Item(key={self.key!r}, title={self.title!r}{price_str})"
 
     def to_dict(self) -> ItemDict:
-        """Convert item to a dictionary suitable for JSON serialization."""
+        """Convert item to a dictionary suitable for JSON serialization.
+
+        Returns:
+            The item's fields, with `published` as an ISO 8601 string.
+        """
         return {
             "key": self.key,
             "title": self.title,
@@ -94,7 +98,11 @@ class Snapshot:
     taken_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     def to_dict(self) -> SnapshotDict:
-        """Convert snapshot to a dictionary for serialization."""
+        """Convert snapshot to a dictionary for serialization.
+
+        Returns:
+            The snapshot's fields, with `taken_at` as an ISO 8601 string.
+        """
         return {
             "items": [item.to_dict() for item in self.items],
             "raw_text": self.raw_text,

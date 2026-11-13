@@ -41,7 +41,14 @@ class ConsoleNotifier(Notifier):
 
 
 def _change_text(change: Change) -> str:
-    """Describe one change: a text diff, an item line, or just the kind of change."""
+    """Describe one change: a text diff, an item line, or just the kind of change.
+
+    Args:
+        change: Change to describe.
+
+    Returns:
+        The text to print, without a trailing newline.
+    """
     if change.kind == ChangeKind.TEXT and change.diff_text:
         text = f"--- Diff ---\n{change.diff_text.removesuffix('\n')}"
     elif change.item is not None:
@@ -52,7 +59,16 @@ def _change_text(change: Change) -> str:
 
 
 def _item_line(kind: ChangeKind, item: Item, before: Item | None) -> str:
-    """Describe an item change in one line, e.g. 'Changed: Flat, 2 800 zł → 2 600 zł'."""
+    """Describe an item change in one line, e.g. 'Changed: Flat, 2 800 zł → 2 600 zł'.
+
+    Args:
+        kind: Kind of the change.
+        item: Item after the change.
+        before: Item before the change, for a changed item.
+
+    Returns:
+        The line to print.
+    """
     line = f"{kind.value.capitalize()}: {item.title}"
     if before is not None and before.price != item.price:
         line += f", {_price(before.price)} → {_price(item.price)}"
@@ -64,7 +80,14 @@ def _item_line(kind: ChangeKind, item: Item, before: Item | None) -> str:
 
 
 def _price(price: float | None) -> str:
-    """Format a price the Polish way, e.g. '2 800 zł' or '2 400,50 zł'."""
+    """Format a price the Polish way, e.g. '2 800 zł' or '2 400,50 zł'.
+
+    Args:
+        price: Price to format, or None.
+
+    Returns:
+        The formatted price, or 'no price' for None.
+    """
     if price is None:
         return "no price"
     if price.is_integer():

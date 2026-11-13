@@ -26,9 +26,11 @@ class DummyWorkingSource(Source):
     """Concrete source for testing template method execution."""
 
     def fetch(self) -> str:
+        """Return two scripted lines."""
         return "id1:Title1\nid2:Title2"
 
     def parse(self, raw: str) -> Iterable[Item]:
+        """Turn each `key:title` line into an Item."""
         for line in raw.strip().splitlines():
             key, title = line.split(":")
             yield Item(key=key, title=title)
@@ -38,10 +40,12 @@ class FailingFetchSource(Source):
     """Source that fails during fetch."""
 
     def fetch(self) -> str:
+        """Fail the way a broken network does."""
         msg = "Network down"
         raise OSError(msg)
 
     def parse(self, raw: str) -> Iterable[Item]:
+        """Return no items; never reached."""
         return ()
 
 
@@ -49,9 +53,11 @@ class FailingParseSource(Source):
     """Source that fails during parse."""
 
     def fetch(self) -> str:
+        """Return text that parse() rejects."""
         return "invalid content"
 
     def parse(self, raw: str) -> Iterable[Item]:
+        """Fail the way a broken parser does."""
         msg = "Corrupted data"
         raise ValueError(msg)
 

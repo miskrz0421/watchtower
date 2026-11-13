@@ -81,8 +81,12 @@ src = ["src", "tests"]
 cache-dir = ".artifacts/ruff"
 
 [tool.ruff.lint]
-# E/F: pycodestyle + pyflakes, I: isort, B: bugbear, UP: pyupgrade, SIM: simplify
-select = ["E", "F", "I", "B", "UP", "SIM"]
+# E/F: pycodestyle + pyflakes, I: isort, B: bugbear, UP: pyupgrade, SIM: simplify,
+# D: every module, class and function has a docstring
+select = ["E", "F", "I", "B", "UP", "SIM", "D"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
 
 [tool.mypy]
 python_version = "3.12"
