@@ -156,14 +156,11 @@ def _run_file_check(file_path: Path, db_path: Path | None) -> int:
     return _run_saved_check(watcher, store)
 
 
-def main(argv: list[str] | None = None) -> int:
-    """Main CLI entrypoint for watchtower.
-
-    Args:
-        argv: Command-line arguments (defaults to sys.argv[1:]).
+def _build_parser() -> argparse.ArgumentParser:
+    """Create the command-line parser with its subcommands.
 
     Returns:
-        Exit code integer (0 for success).
+        The parser for the `watchtower` command.
     """
     parser = argparse.ArgumentParser(
         prog="watchtower",
@@ -175,6 +172,7 @@ def main(argv: list[str] | None = None) -> int:
     check_parser.add_argument(
         "target",
         nargs="?",
+        type=Path,
         default=None,
         help="File to check; without it, --db checks the demo listings page "
         "and no arguments run the built-in M1 demo",
@@ -191,20 +189,46 @@ def main(argv: list[str] | None = None) -> int:
         default=_LISTINGS_URL,
         help=f"listings page checked by --db without a file (default: {_LISTINGS_URL})",
     )
+    return parser
 
+
+def _run_check(args: argparse.Namespace) -> int:
+    """Run the variant of the `check` command chosen by the arguments.
+
+    Args:
+        args: Parsed arguments of the `check` command.
+
+    Returns:
+        Exit code of the check.
+
+    Raises:
+        WatchtowerError: If a source or the store fails.
+    """
+    if args.target is not None:
+        return _run_file_check(args.target, args.db)
+    if args.db is not None:
+        store = SnapshotStore(args.db)
+        return _run_saved_check(_build_listings_watcher(args.url, store), store)
+    return _run_demo_check()
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Run the `watchtower` command.
+
+    Args:
+        argv: Command-line arguments; None means `sys.argv[1:]`.
+
+    Returns:
+        Exit code: 0 on success, 1 on a Watchtower error, 2 on wrong usage.
+    """
+    parser = _build_parser()
     args = parser.parse_args(argv)
 
-    if args.command == "check":
-        try:
-            if args.target:
-                return _run_file_check(Path(args.target), args.db)
-            if args.db is not None:
-                store = SnapshotStore(args.db)
-                return _run_saved_check(_build_listings_watcher(args.url, store), store)
-            return _run_demo_check()
-        except WatchtowerError as err:
-            sys.stderr.write(f"Error: {err}\n")
-            return 1
-
-    parser.print_help()
-    return 0
+    if args.command != "check":
+        parser.print_help()
+        return 0
+    try:
+        return _run_check(args)
+    except WatchtowerError as err:
+        sys.stderr.write(f"Error: {err}\n")
+        return 1
