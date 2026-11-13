@@ -5,14 +5,17 @@ from __future__ import annotations
 import logging
 import time
 from collections.abc import Sequence
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from watchtower.diffs.base import Differ
 from watchtower.events import ChangeDetected, CheckCompleted, Event, EventBus, FetchFailed
+from watchtower.filters.base import Filter
 from watchtower.models import Change, ChangeEvent, Snapshot
 from watchtower.notifiers.base import Notifier
 from watchtower.sources.base import Source
 from watchtower.storage.snapshots import SnapshotStore
+
+DEFAULT_INTERVAL = timedelta(minutes=15)
 
 _logger = logging.getLogger(__name__)
 
@@ -29,6 +32,10 @@ class Watcher:
     every check and the new one is saved after notifying, so the watcher
     remembers its state across restarts. Without a store, it only remembers
     the last snapshot in memory (see ADR-013).
+
+    A change is reported only if every filter accepts it (see ADR-005). The
+    watcher does not schedule itself: `interval` tells the Scheduler how often
+    to call `check_once`.
     """
 
     def __init__(
@@ -39,6 +46,8 @@ class Watcher:
         notifiers: Sequence[Notifier] | None = None,
         event_bus: EventBus | None = None,
         store: SnapshotStore | None = None,
+        filters: Sequence[Filter] | None = None,
+        interval: timedelta = DEFAULT_INTERVAL,
     ) -> None:
         """Initialize a Watcher pipeline.
 
@@ -49,6 +58,9 @@ class Watcher:
             notifiers: Target notifiers that will receive detected change events.
             event_bus: Optional global event bus for system-wide observers.
             store: Optional store that keeps the last snapshot between runs.
+            filters: Filters a change must all pass to be reported; none means
+                every change is reported.
+            interval: Time the Scheduler waits between two checks.
         """
         self._name = name
         self._source = source
@@ -56,6 +68,8 @@ class Watcher:
         self._notifiers: list[Notifier] = list(notifiers) if notifiers is not None else []
         self._event_bus = event_bus
         self._store = store
+        self._filters: list[Filter] = list(filters) if filters is not None else []
+        self._interval = interval
         self._last_snapshot: Snapshot | None = None
 
     @property
@@ -87,6 +101,16 @@ class Watcher:
     def store(self) -> SnapshotStore | None:
         """Store keeping the last snapshot between runs, if configured."""
         return self._store
+
+    @property
+    def filters(self) -> list[Filter]:
+        """Filters a change must all pass to be reported."""
+        return self._filters
+
+    @property
+    def interval(self) -> timedelta:
+        """Time the Scheduler waits between two checks."""
+        return self._interval
 
     @property
     def last_snapshot(self) -> Snapshot | None:
@@ -126,17 +150,28 @@ class Watcher:
             self._store.save(self._name, snapshot)
 
     def _fetch_and_diff(self) -> tuple[list[Change], Snapshot]:
-        """Fetch a new snapshot and compute changes against previous snapshot.
+        """Fetch a new snapshot and compute the changes that pass the filters.
 
         Returns:
-            The detected changes and the new snapshot.
+            The changes to report and the new snapshot.
 
         Raises:
             WatchtowerError: If the source or the store fails.
         """
         new_snapshot = self._source.snapshot()
         changes = self._differ.diff(self._previous_snapshot(), new_snapshot)
-        return changes, new_snapshot
+        return [change for change in changes if self._passes_filters(change)], new_snapshot
+
+    def _passes_filters(self, change: Change) -> bool:
+        """Decide whether a change is worth reporting.
+
+        Args:
+            change: Change found by the differ.
+
+        Returns:
+            True if every filter accepts the change, or there are no filters.
+        """
+        return all(change_filter.matches(change) for change_filter in self._filters)
 
     def _dispatch_notifiers(self, event: ChangeEvent) -> None:
         """Deliver a ChangeEvent to all configured notifiers.
@@ -206,7 +241,8 @@ class Watcher:
         """Execute a single check cycle through the monitoring pipeline.
 
         1. Fetches a new snapshot from the configured source.
-        2. Loads the previous snapshot and computes changes against it.
+        2. Loads the previous snapshot, computes changes against it and keeps
+           the ones that pass every filter.
         3. If changes are detected, constructs a ChangeEvent, sends it to all
            configured notifiers, and publishes ChangeDetected on the EventBus.
         4. Saves the new snapshot as the baseline for the next check. This
