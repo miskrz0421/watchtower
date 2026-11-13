@@ -172,3 +172,26 @@ PR that makes the decision.
 - Consequences: text without a currency and with several numbers can still give the wrong
   one, so a source that knows where the price is (`WebPageSource` with a `price_selector`)
   passes only that text.
+
+## ADR-015: What is public and how private names are marked
+- Status: accepted · after M2
+- Context: the top-level package re-exported 44 names, including test helpers (`FakeSource`),
+  serialisation details (`ItemDict`) and every built-in plugin, and module-level names such as
+  `logger` looked public. A reader could not tell what a user of the framework may rely on.
+- Decision: there are three levels.
+  1. `watchtower` exports only what is needed to build a watcher in code or to write a plugin:
+     `Watcher`, `SnapshotStore`, the models, the events and `EventBus`, the plugin base classes,
+     the errors and the registry functions.
+  2. Each subpackage lists its public classes in the `__all__` of its `__init__.py`. Built-in
+     plugins are imported from there (`from watchtower.sources import WebPageSource`) or
+     created by name through the registry.
+  3. Anything used only inside its own file or class starts with an underscore: `_logger`,
+     helper functions, constants, instance attributes.
+- Module files keep plain names (`storage/snapshots.py`, not `storage/_snapshots.py`). With
+  level 2 every module would get the underscore, so it would mark nothing; inside the package
+  we import from the module that defines a name, which keeps imports free of cycles.
+- Alternatives: underscore-prefixed module files (the same information as `__all__`, at the
+  cost of renaming every file and import); exporting everything from the top level (hides what
+  is stable); no top-level exports (every user needs to know the internal layout).
+- Consequences: importing `watchtower` still imports the plugin packages, so built-in plugins
+  are registered. A new public name has to be added to an `__all__` on purpose.

@@ -1,9 +1,16 @@
-"""Watchtower: A plugin-based monitoring framework in Python."""
+"""Watchtower: a plugin-based monitoring framework.
 
-from watchtower.core.watcher import Watcher
-from watchtower.diffs.base import Differ
-from watchtower.diffs.items import ItemDiff
-from watchtower.diffs.text import TextDiff
+The names below are the public API: what is needed to build a watcher in code
+and to write a plugin. Built-in plugins are not listed here; import them from
+their packages (`watchtower.sources`, `watchtower.diffs`, `watchtower.notifiers`)
+or create them by name through the registry (see ADR-015).
+
+Importing this package imports those packages too, which registers every
+built-in plugin.
+"""
+
+from watchtower.core import Watcher
+from watchtower.diffs import Differ
 from watchtower.errors import (
     NotifyError,
     ParseError,
@@ -20,20 +27,10 @@ from watchtower.events import (
     WatcherState,
     WatcherStateChanged,
 )
-from watchtower.filters.base import Filter
-from watchtower.models import (
-    Change,
-    ChangeEvent,
-    ChangeKind,
-    Item,
-    ItemDict,
-    Snapshot,
-    SnapshotDict,
-)
-from watchtower.notifiers.base import Notifier
-from watchtower.notifiers.console import ConsoleNotifier
+from watchtower.filters import Filter
+from watchtower.models import Change, ChangeEvent, ChangeKind, Item, Snapshot
+from watchtower.notifiers import Notifier
 from watchtower.registry import (
-    create,
     create_differ,
     create_filter,
     create_notifier,
@@ -44,14 +41,8 @@ from watchtower.registry import (
     register_notifier,
     register_source,
 )
-from watchtower.sources.base import Source
-from watchtower.sources.fake import FakeSource
-from watchtower.sources.file import FileSource
-from watchtower.sources.http import HttpSource
-from watchtower.sources.parsing import parse_price
-from watchtower.sources.rss import RSSSource
-from watchtower.sources.webpage import WebPageSource
-from watchtower.storage.snapshots import SnapshotStore
+from watchtower.sources import Source
+from watchtower.storage import SnapshotStore
 
 __all__ = [
     "Change",
@@ -59,41 +50,29 @@ __all__ = [
     "ChangeEvent",
     "ChangeKind",
     "CheckCompleted",
-    "ConsoleNotifier",
     "Differ",
     "Event",
     "EventBus",
-    "FakeSource",
     "FetchFailed",
-    "FileSource",
     "Filter",
-    "HttpSource",
     "Item",
-    "ItemDict",
-    "ItemDiff",
     "Notifier",
     "NotifyError",
     "ParseError",
-    "RSSSource",
     "Snapshot",
-    "SnapshotDict",
     "SnapshotStore",
     "Source",
     "SourceError",
     "StorageError",
-    "TextDiff",
     "Watcher",
     "WatcherState",
     "WatcherStateChanged",
     "WatchtowerError",
-    "WebPageSource",
-    "create",
     "create_differ",
     "create_filter",
     "create_notifier",
     "create_source",
     "list_plugins",
-    "parse_price",
     "register_differ",
     "register_filter",
     "register_notifier",
