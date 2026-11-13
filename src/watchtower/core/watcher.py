@@ -14,7 +14,7 @@ from watchtower.notifiers.base import Notifier
 from watchtower.sources.base import Source
 from watchtower.storage.snapshots import SnapshotStore
 
-logger = logging.getLogger(__name__)
+_logger = logging.getLogger(__name__)
 
 
 class Watcher:
@@ -122,7 +122,7 @@ class Watcher:
             try:
                 notifier.send(event)
             except Exception:
-                logger.exception("Notifier %r failed for watcher %r", notifier, self._name)
+                _logger.exception("Notifier %r failed for watcher %r", notifier, self._name)
 
     def _handle_changes(self, changes: list[Change], timestamp: datetime) -> ChangeEvent:
         """Construct ChangeEvent, dispatch to notifiers, and publish ChangeDetected."""

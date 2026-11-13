@@ -17,7 +17,7 @@ from watchtower.sources.file import FileSource
 from watchtower.sources.webpage import WebPageSource
 from watchtower.storage.snapshots import SnapshotStore
 
-DEMO_PAGES = [
+_DEMO_PAGES = [
     "Welcome to Watchtower Listings\n1. Flat in Stare Miasto - 3500 PLN\n",
     (
         "Welcome to Watchtower Listings\n"
@@ -28,21 +28,21 @@ DEMO_PAGES = [
 
 # 127.0.0.1 rather than localhost: localhost can resolve to IPv6 first, while
 # the fake listings server listens on IPv4 only.
-LISTINGS_URL = "http://127.0.0.1:8000/listings"
+_LISTINGS_URL = "http://127.0.0.1:8000/listings"
 
 
-def build_demo_watcher() -> Watcher:
+def _build_demo_watcher() -> Watcher:
     """Create a watcher that replays the scripted demo pages."""
     return Watcher(
         name="Krakow Flats Watcher",
-        source=FakeSource(contents=DEMO_PAGES),
+        source=FakeSource(contents=_DEMO_PAGES),
         differ=TextDiff(),
         notifiers=[ConsoleNotifier(stream=sys.stdout)],
         event_bus=EventBus(),
     )
 
 
-def run_demo_check() -> int:
+def _run_demo_check() -> int:
     """Run an end-to-end M1 demonstration check using FakeSource and TextDiff.
 
     Executes two consecutive checks:
@@ -53,7 +53,7 @@ def run_demo_check() -> int:
         0 on success.
     """
     sys.stdout.write("=== Watchtower M1 Demo: Foundations ===\n")
-    watcher = build_demo_watcher()
+    watcher = _build_demo_watcher()
 
     sys.stdout.write("\n[Step 1] Running initial check (establishing baseline)...\n")
     event1 = watcher.check_once()
@@ -69,7 +69,7 @@ def run_demo_check() -> int:
     return 0
 
 
-def build_listings_watcher(url: str, store: SnapshotStore) -> Watcher:
+def _build_listings_watcher(url: str, store: SnapshotStore) -> Watcher:
     """Create the M2 demo watcher for the fake listings server.
 
     The watcher is hard-coded until YAML config arrives in M3. Its source
@@ -95,7 +95,7 @@ def build_listings_watcher(url: str, store: SnapshotStore) -> Watcher:
     )
 
 
-def run_saved_check(watcher: Watcher, store: SnapshotStore) -> int:
+def _run_saved_check(watcher: Watcher, store: SnapshotStore) -> int:
     """Run one check of a watcher whose state is kept in a store.
 
     Changes are printed by the watcher's notifiers. This function only says
@@ -122,7 +122,7 @@ def run_saved_check(watcher: Watcher, store: SnapshotStore) -> int:
     return 0
 
 
-def run_file_check(file_path: Path, db_path: Path | None) -> int:
+def _run_file_check(file_path: Path, db_path: Path | None) -> int:
     """Check a local file for changes since the previous run.
 
     Args:
@@ -153,7 +153,7 @@ def run_file_check(file_path: Path, db_path: Path | None) -> int:
         notifiers=[ConsoleNotifier(stream=sys.stdout)],
         store=store,
     )
-    return run_saved_check(watcher, store)
+    return _run_saved_check(watcher, store)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -188,8 +188,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     check_parser.add_argument(
         "--url",
-        default=LISTINGS_URL,
-        help=f"listings page checked by --db without a file (default: {LISTINGS_URL})",
+        default=_LISTINGS_URL,
+        help=f"listings page checked by --db without a file (default: {_LISTINGS_URL})",
     )
 
     args = parser.parse_args(argv)
@@ -197,11 +197,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "check":
         try:
             if args.target:
-                return run_file_check(Path(args.target), args.db)
+                return _run_file_check(Path(args.target), args.db)
             if args.db is not None:
                 store = SnapshotStore(args.db)
-                return run_saved_check(build_listings_watcher(args.url, store), store)
-            return run_demo_check()
+                return _run_saved_check(_build_listings_watcher(args.url, store), store)
+            return _run_demo_check()
         except WatchtowerError as err:
             sys.stderr.write(f"Error: {err}\n")
             return 1

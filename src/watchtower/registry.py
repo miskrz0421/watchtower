@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     from watchtower.notifiers.base import Notifier
     from watchtower.sources.base import Source
 
-T = TypeVar("T")
+_T = TypeVar("_T")
 
 # Per-kind registries storing plugin classes keyed by name.
 # Runtime values are plain ``type[object]``; the typed factory functions
@@ -30,7 +30,7 @@ _ALL_REGISTRIES: dict[str, dict[str, type[object]]] = {
 }
 
 
-def _register(kind: str, name: str) -> Callable[[type[T]], type[T]]:
+def _register(kind: str, name: str) -> Callable[[type[_T]], type[_T]]:
     """Internal decorator helper to register a plugin class under a specific kind.
 
     Args:
@@ -41,14 +41,14 @@ def _register(kind: str, name: str) -> Callable[[type[T]], type[T]]:
         Decorator function that registers the class and returns it unchanged.
     """
 
-    def decorator(cls: type[T]) -> type[T]:
+    def decorator(cls: type[_T]) -> type[_T]:
         _ALL_REGISTRIES[kind][name] = cls
         return cls
 
     return decorator
 
 
-def register_source(name: str) -> Callable[[type[T]], type[T]]:
+def register_source(name: str) -> Callable[[type[_T]], type[_T]]:
     """Decorator to register a Source implementation.
 
     Args:
@@ -57,7 +57,7 @@ def register_source(name: str) -> Callable[[type[T]], type[T]]:
     return _register("source", name)
 
 
-def register_differ(name: str) -> Callable[[type[T]], type[T]]:
+def register_differ(name: str) -> Callable[[type[_T]], type[_T]]:
     """Decorator to register a Differ implementation.
 
     Args:
@@ -66,7 +66,7 @@ def register_differ(name: str) -> Callable[[type[T]], type[T]]:
     return _register("differ", name)
 
 
-def register_filter(name: str) -> Callable[[type[T]], type[T]]:
+def register_filter(name: str) -> Callable[[type[_T]], type[_T]]:
     """Decorator to register a Filter implementation.
 
     Args:
@@ -75,7 +75,7 @@ def register_filter(name: str) -> Callable[[type[T]], type[T]]:
     return _register("filter", name)
 
 
-def register_notifier(name: str) -> Callable[[type[T]], type[T]]:
+def register_notifier(name: str) -> Callable[[type[_T]], type[_T]]:
     """Decorator to register a Notifier implementation.
 
     Args:

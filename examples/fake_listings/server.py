@@ -21,10 +21,10 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, TypedDict
 
-DEFAULT_HOST = "127.0.0.1"
-DEFAULT_PORT = 8000
-DEFAULT_DATA_PATH = Path(__file__).with_name("listings.json")
-DETAIL_PREFIX = "/flats/"
+_DEFAULT_HOST = "127.0.0.1"
+_DEFAULT_PORT = 8000
+_DEFAULT_DATA_PATH = Path(__file__).with_name("listings.json")
+_DETAIL_PREFIX = "/flats/"
 
 
 class Listing(TypedDict):
@@ -83,7 +83,7 @@ def render_html(listings: list[Listing]) -> str:
     """
     offers = "\n".join(
         f'  <div class="offer" data-id="{escape(listing["id"])}">\n'
-        f'    <a class="title" href="{DETAIL_PREFIX}{escape(listing["id"])}">'
+        f'    <a class="title" href="{_DETAIL_PREFIX}{escape(listing["id"])}">'
         f"{escape(listing['title'])}</a>\n"
         f'    <span class="price">{format_price(listing["price"])}</span>\n'
         f"  </div>"
@@ -127,7 +127,7 @@ def render_rss(listings: list[Listing], base_url: str) -> str:
         "    <item>\n"
         f'      <guid isPermaLink="false">{escape(listing["id"])}</guid>\n'
         f"      <title>{escape(listing['title'])}</title>\n"
-        f"      <link>{escape(base_url)}{DETAIL_PREFIX}{escape(listing['id'])}</link>\n"
+        f"      <link>{escape(base_url)}{_DETAIL_PREFIX}{escape(listing['id'])}</link>\n"
         f"      <description>{escape(format_price(listing['price']))}. "
         f"{escape(listing['description'])}</description>\n"
         "    </item>"
@@ -155,13 +155,13 @@ class ListingsHandler(BaseHTTPRequestHandler):
         The base constructor handles the request immediately, so `data_path`
         must be set before calling it.
         """
-        self.data_path = data_path
+        self._data_path = data_path
         super().__init__(*args, **kwargs)
 
     def do_GET(self) -> None:
         """Route a GET request to the matching renderer."""
         try:
-            listings = load_listings(self.data_path)
+            listings = load_listings(self._data_path)
         except (OSError, ValueError) as err:
             self._reply(HTTPStatus.INTERNAL_SERVER_ERROR, "text/plain", f"Bad data file: {err}\n")
             return
@@ -185,9 +185,9 @@ class ListingsHandler(BaseHTTPRequestHandler):
 
     def _find_detail(self, listings: list[Listing]) -> Listing | None:
         """Return the listing addressed by a /flats/<id> path, if any."""
-        if not self.path.startswith(DETAIL_PREFIX):
+        if not self.path.startswith(_DETAIL_PREFIX):
             return None
-        listing_id = self.path.removeprefix(DETAIL_PREFIX)
+        listing_id = self.path.removeprefix(_DETAIL_PREFIX)
         return next((listing for listing in listings if listing["id"] == listing_id), None)
 
     def _base_url(self) -> str:
@@ -216,9 +216,9 @@ def make_server(host: str, port: int, data_path: Path) -> ThreadingHTTPServer:
 def main(argv: list[str] | None = None) -> None:
     """Parse the command line and serve until Ctrl+C."""
     parser = argparse.ArgumentParser(description="Serve fake flat listings.")
-    parser.add_argument("--host", default=DEFAULT_HOST)
-    parser.add_argument("--port", type=int, default=DEFAULT_PORT)
-    parser.add_argument("--data", type=Path, default=DEFAULT_DATA_PATH, help="listings JSON file")
+    parser.add_argument("--host", default=_DEFAULT_HOST)
+    parser.add_argument("--port", type=int, default=_DEFAULT_PORT)
+    parser.add_argument("--data", type=Path, default=_DEFAULT_DATA_PATH, help="listings JSON file")
     args = parser.parse_args(argv)
 
     with make_server(args.host, args.port, args.data) as server:

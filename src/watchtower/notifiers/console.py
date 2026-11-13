@@ -23,8 +23,8 @@ class ConsoleNotifier(Notifier):
             tz: Time zone used to display event times; None means the
                 computer's local time zone. Events are stored in UTC.
         """
-        self.stream = stream if stream is not None else sys.stdout
-        self.tz = tz
+        self._stream = stream if stream is not None else sys.stdout
+        self._tz = tz
 
     def send(self, event: ChangeEvent) -> None:
         """Format and print the event to the configured stream.
@@ -32,20 +32,20 @@ class ConsoleNotifier(Notifier):
         Args:
             event: ChangeEvent to output.
         """
-        time_str = event.timestamp.astimezone(self.tz).strftime("%Y-%m-%d %H:%M:%S")
-        self.stream.write(f"\n[{time_str}] [{event.watcher_name}] {event.summary}\n")
+        time_str = event.timestamp.astimezone(self._tz).strftime("%Y-%m-%d %H:%M:%S")
+        self._stream.write(f"\n[{time_str}] [{event.watcher_name}] {event.summary}\n")
 
         for change in event.changes:
             if change.kind == ChangeKind.TEXT and change.diff_text:
-                self.stream.write("--- Diff ---\n")
-                self.stream.write(change.diff_text)
+                self._stream.write("--- Diff ---\n")
+                self._stream.write(change.diff_text)
                 if not change.diff_text.endswith("\n"):
-                    self.stream.write("\n")
+                    self._stream.write("\n")
             elif change.item is not None:
-                self.stream.write(f"{_item_line(change.kind, change.item, change.before)}\n")
+                self._stream.write(f"{_item_line(change.kind, change.item, change.before)}\n")
             else:
-                self.stream.write(f"{change.kind.value.capitalize()}\n")
-        self.stream.flush()
+                self._stream.write(f"{change.kind.value.capitalize()}\n")
+        self._stream.flush()
 
 
 def _item_line(kind: ChangeKind, item: Item, before: Item | None) -> str:

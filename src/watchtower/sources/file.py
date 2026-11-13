@@ -22,8 +22,8 @@ class FileSource(Source):
             path: Path to the local file to monitor.
             encoding: Text encoding of the file (defaults to 'utf-8').
         """
-        self.path = Path(path)
-        self.encoding = encoding
+        self._path = Path(path)
+        self._encoding = encoding
 
     def fetch(self) -> str:
         """Read and return the text content of the target file.
@@ -34,14 +34,14 @@ class FileSource(Source):
         Raises:
             SourceError: If the file is missing or cannot be opened.
         """
-        if not self.path.exists():
-            msg = f"Target file does not exist: {self.path}"
+        if not self._path.exists():
+            msg = f"Target file does not exist: {self._path}"
             raise SourceError(msg)
 
         try:
-            return self.path.read_text(encoding=self.encoding)
+            return self._path.read_text(encoding=self._encoding)
         except Exception as err:
-            msg = f"Failed to read file {self.path}: {err}"
+            msg = f"Failed to read file {self._path}: {err}"
             raise SourceError(msg) from err
 
     def parse(self, raw: str) -> Iterable[Item]:

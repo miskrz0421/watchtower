@@ -46,10 +46,10 @@ class WebPageSource(HttpSource):
             transport: Optional transport used by tests.
         """
         super().__init__(url, timeout=timeout, transport=transport)
-        self.selector = selector
-        self.title_selector = title_selector
-        self.price_selector = price_selector
-        self.key_attribute = key_attribute
+        self._selector = selector
+        self._title_selector = title_selector
+        self._price_selector = price_selector
+        self._key_attribute = key_attribute
 
     def parse(self, raw: str) -> Iterable[Item]:
         """Parse an HTML page with BeautifulSoup into Items.
@@ -66,7 +66,7 @@ class WebPageSource(HttpSource):
         soup = BeautifulSoup(raw, "html.parser")
         return [
             self._to_item(element, position)
-            for position, element in enumerate(soup.select(self.selector), start=1)
+            for position, element in enumerate(soup.select(self._selector), start=1)
         ]
 
     def _to_item(self, element: Tag, position: int) -> Item:
@@ -74,7 +74,7 @@ class WebPageSource(HttpSource):
         href = self._href(element)
         title = self._title(element)
         if not title:
-            msg = f"Element {position} matching {self.selector!r} has no title"
+            msg = f"Element {position} matching {self._selector!r} has no title"
             raise ParseError(msg)
         return Item(
             key=self._key(element, href, title),
@@ -86,22 +86,22 @@ class WebPageSource(HttpSource):
 
     def _title(self, element: Tag) -> str:
         """Return the title found inside the element."""
-        if self.title_selector is None:
+        if self._title_selector is None:
             return element.get_text(" ", strip=True)
-        title = element.select_one(self.title_selector)
+        title = element.select_one(self._title_selector)
         return title.get_text(" ", strip=True) if title is not None else ""
 
     def _price(self, element: Tag) -> float | None:
         """Return the price found inside the element, if any."""
-        if self.price_selector is None:
+        if self._price_selector is None:
             return None
-        price = element.select_one(self.price_selector)
+        price = element.select_one(self._price_selector)
         return parse_price(price.get_text(" ", strip=True)) if price is not None else None
 
     def _key(self, element: Tag, href: str | None, title: str) -> str:
         """Return the stable key of the element."""
-        if self.key_attribute is not None:
-            value = element.get(self.key_attribute)
+        if self._key_attribute is not None:
+            value = element.get(self._key_attribute)
             if isinstance(value, str) and value.strip():
                 return value
         if href is not None:

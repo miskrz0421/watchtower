@@ -33,7 +33,7 @@ class HttpSource(Source):
                 so that they never touch the network.
         """
         self.url = url
-        self.timeout = timeout
+        self._timeout = timeout
         self._transport = transport
 
     def fetch(self) -> str:
@@ -47,7 +47,7 @@ class HttpSource(Source):
         """
         with httpx.Client(
             headers={"User-Agent": USER_AGENT},
-            timeout=self.timeout,
+            timeout=self._timeout,
             transport=self._transport,
             follow_redirects=True,
         ) as client:
