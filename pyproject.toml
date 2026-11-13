@@ -52,11 +52,20 @@ packages = ["src/watchtower", "examples/fake_listings"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-ra --strict-markers"
+addopts = "-ra --strict-markers --cov"
 markers = [
     "gui: tests that need PySide6 and a display (run with: uv run pytest -m gui)",
     "network: tests that hit a real local HTTP server",
 ]
+
+[tool.coverage.run]
+source = ["watchtower"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+# Tests fail below this; raise it when coverage grows, never lower it.
+fail_under = 95
 
 [tool.ruff]
 line-length = 100

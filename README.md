@@ -29,7 +29,7 @@ Requirements: Python 3.12+ and [uv](https://docs.astral.sh/uv/).
 uv sync                    # core + dev tools (dev includes PySide6 for pytest-qt)
 uv sync --all-extras       # + reports (pandas, matplotlib)
 
-uv run pytest              # tests
+uv run pytest              # tests + coverage (fails below 95%)
 uv run ruff check .        # lint
 uv run ruff format .       # format
 uv run mypy                # type check
