@@ -83,3 +83,18 @@ def _normalize_single_separator(number: str, separator: str) -> str:
     if len(parts) > 2 or len(parts[1]) == 3:
         return "".join(parts)
     return f"{parts[0]}.{parts[1]}"
+
+
+def non_empty_string(value: object) -> str | None:
+    """Return a non-blank string, or None when the value is missing or blank.
+
+    Args:
+        value: Field value from feedparser.
+
+    Returns:
+        The value as a string, or None.
+    """
+    if value is None:
+        return None
+    text = str(value)
+    return text if text.strip() else None
