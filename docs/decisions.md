@@ -264,3 +264,7 @@ PR that makes the decision.
   intervals kept in the scheduler (the config would have to return pairs).
 - Consequences: the loader never touches the database or the network, so it is tested with
   plain files. The "same watcher" test compares what the two builders build.
+  `WatcherBuilder.every` takes a `timedelta`, not text: reading `15m` is the config's job, so
+  the loader calls `parse_interval` and the builder does not depend on the config package.
+  `build()` raises `ConfigError` naming the watcher when the source or the differ is missing,
+  and `every` rejects an interval that is not positive.
