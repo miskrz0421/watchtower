@@ -234,14 +234,12 @@ PR that makes the decision.
   `name`, `source`, `diff`, and optionally `interval` (text such as `15m`), `filters` and
   `notify`. `source`, `diff` and each `notify` entry are mappings with a `type` (the registry
   name); every other key is passed to the plugin's constructor as a keyword argument.
-- Filters use a shorter form, because most take one value: an entry is either a name
-  (`new_items`) or a mapping with one key, the registry name, whose value is passed as the
-  only positional argument (`price_below: 3000`). The composite filters `all`, `any` and
-  `not` take filter entries as their value, so rules nest. The filters listed under `filters`
-  must all pass.
-- Alternatives: `type` + keyword arguments for filters too (uniform, but `{type: price_below,
-  limit: 3000}` is long for the most common line of a config); a small expression language
-  (`price < 3000 and not agency`: needs a parser of our own).
+- Filters are a special case: most take a single value, so an entry is either a plain name
+  (`new_items`) or a mapping with one key — the registry name — whose value is passed positionally
+  (`price_below: 3000`). The composite filters `all` and `any` take any number of filter entries
+  as their value; `not` takes one. Rules can nest, or combine many filters at once (see ADR-019).
+  The filters listed under `filters` must all pass.
+- Alternatives: a small expression language (`price < 3000 and not agency`: needs a parser of our own).
 - Consequences: `create_filter` accepts positional arguments. A filter with several parameters
   takes a mapping as its one argument or is written in Python.
 
@@ -268,3 +266,24 @@ PR that makes the decision.
   the loader calls `parse_interval` and the builder does not depend on the config package.
   `build()` raises `ConfigError` naming the watcher when the source or the differ is missing,
   and `every` rejects an interval that is not positive.
+
+## ADR-019: Composite filters accept any number of inner filters
+- Status: accepted · M3
+- Context: `And` and `Or` are composite filters that combine other filters. The `&` and `|`
+  operators on `Filter` only ever combine two filters, so a chain such as `a & b & c` builds a
+  nested tree (`And(And(a, b), c)`). The YAML config, however, lists filter entries under `filters`
+  and each composite entry can name any number of inner filters. The constructor signature needed
+  to match what the config can express.
+- Decision: `And.__init__` and `Or.__init__` accept `*filters: Filter`, i.e. exactly one or more
+  inner filters (zero is rejected with `ValueError`). They are evaluated lazily: `And` returns
+  `False` on the first non-matching filter, `Or` returns `True` on the first matching filter.
+- Alternatives: requiring exactly two arguments (matches `&` and `|`, but the YAML config could not
+  express more than two without nesting); requiring zero or more with vacuous truth (an `And` of
+  nothing would accept everything, which is surprising and hard to debug).
+- Consequences: the YAML config may list any number of filters under an `all` or `any` entry. A
+  user can also test filters in a composite condition one by one while debugging, without having to
+  remove the whole block, because a single-element composite filter accepts exactly what its inner filter
+  accepts. The `&` and `|` operators keep their two-argument behaviour in Python; nesting handles
+  longer chains there.
+  In the config, each entry listed under `all` or `any` becomes its own argument:
+  `all: [a, b]` is built as `create_filter("all", a, b)`, not `create_filter("all", [a, b])`.

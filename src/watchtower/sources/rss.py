@@ -12,7 +12,7 @@ from watchtower.errors import ParseError
 from watchtower.models import Item
 from watchtower.registry import register_source
 from watchtower.sources.http import HttpSource
-from watchtower.sources.parsing import parse_price
+from watchtower.sources.parsing import non_empty_string, parse_price
 
 
 class _Feed(Protocol):
@@ -73,45 +73,30 @@ def _to_item(entry: Mapping[str, object], position: int) -> Item:
     Raises:
         ParseError: If the entry has no id or link, no title, or an invalid date.
     """
-    key = _non_empty_string(entry.get("id")) or _non_empty_string(entry.get("link"))
+    key = non_empty_string(entry.get("id")) or non_empty_string(entry.get("link"))
     if key is None:
         msg = f"Feed entry {position} has no id or link"
         raise ParseError(msg)
 
-    title = _non_empty_string(entry.get("title"))
+    title = non_empty_string(entry.get("title"))
     if title is None:
         msg = f"Feed entry {position} ({key!r}) has no title"
         raise ParseError(msg)
 
     text = (
-        _non_empty_string(entry.get("summary")) or _non_empty_string(entry.get("description")) or ""
+        non_empty_string(entry.get("summary")) or non_empty_string(entry.get("description")) or ""
     )
     price = parse_price(text)
     if price is None:
-        price = parse_price(_non_empty_string(entry.get("price")) or "")
+        price = parse_price(non_empty_string(entry.get("price")) or "")
     return Item(
         key=key,
         title=title,
-        url=_non_empty_string(entry.get("link")),
+        url=non_empty_string(entry.get("link")),
         price=price,
         text=text,
         published=_published(entry, position),
     )
-
-
-def _non_empty_string(value: object) -> str | None:
-    """Return a non-blank string, or None when the value is missing or blank.
-
-    Args:
-        value: Field value from feedparser.
-
-    Returns:
-        The value as a string, or None.
-    """
-    if value is None:
-        return None
-    text = str(value)
-    return text if text.strip() else None
 
 
 def _published(entry: Mapping[str, object], position: int) -> datetime | None:

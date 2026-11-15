@@ -1,0 +1,28 @@
+{
+  "data": {
+    "total": 3,
+    "offers": [
+      {
+        "id": "1",
+        "title": "Flat Krowodrza",
+        "link": "http://example.test/flats/1",
+        "price": 2800,
+        "description": "2 rooms, 45 m2, 2 800 zł"
+      },
+      {
+        "id": "2",
+        "title": "Studio Kazimierz",
+        "link": "http://example.test/flats/2",
+        "price": "2 400,50 zł",
+        "description": "1 room, 30 m2"
+      },
+      {
+        "id": "3",
+        "title": "Flat without price",
+        "link": "http://other.test/flats/3",
+        "price": null,
+        "description": "Price on request"
+      }
+    ]
+  }
+}
