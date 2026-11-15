@@ -75,9 +75,9 @@ These are the contracts between the packages. A change to one needs an entry in
 
 | Event | Published when | Main subscribers |
 |---|---|---|
-| `CheckCompleted` | After every check (success or failure), with duration | HistoryRecorder, GUI |
-| `ChangeDetected` | A ChangeEvent passed the filters | HistoryRecorder, GUI Changes tab |
-| `FetchFailed` | A source raised after retries | LoggingObserver, GUI Log tab |
+| `CheckCompleted` | After every check (success or failure), with duration | HistoryRecorder, LoggingObserver, GUI |
+| `ChangeDetected` | A ChangeEvent passed the filters | HistoryRecorder, LoggingObserver, GUI Changes tab |
+| `FetchFailed` | A source raised after retries | GUI Log tab |
 | `WatcherStateChanged` | State machine transition | GUI Watchers tab, tray icon |
 
 ## Watcher state machine
