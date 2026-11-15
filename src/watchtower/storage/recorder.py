@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from watchtower.events import EventBus
+from watchtower.events import ChangeDetected, CheckCompleted, EventBus
 from watchtower.storage.history import HistoryStore
 
 
@@ -19,7 +19,7 @@ class HistoryRecorder:
         Args:
             store: Store the events are saved to.
         """
-        raise NotImplementedError
+        self._store = store
 
     def attach(self, event_bus: EventBus) -> None:
         """Start recording the CheckCompleted and ChangeDetected events of a bus.
@@ -27,4 +27,13 @@ class HistoryRecorder:
         Args:
             event_bus: Bus to subscribe to.
         """
-        raise NotImplementedError
+        event_bus.subscribe(CheckCompleted, self._on_check_completed)
+        event_bus.subscribe(ChangeDetected, self._on_change_detected)
+
+    def _on_check_completed(self, event: CheckCompleted) -> None:
+        """Record a completed check event in the store."""
+        self._store.record_check(event)
+
+    def _on_change_detected(self, event: ChangeDetected) -> None:
+        """Record detected changes in the store."""
+        self._store.record_changes(event.event)
