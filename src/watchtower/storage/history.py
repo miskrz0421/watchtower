@@ -8,10 +8,11 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from typing import TypedDict
 
 from watchtower.errors import StorageError
 from watchtower.events import CheckCompleted
-from watchtower.models import ChangeEvent, ChangeKind
+from watchtower.models import Change, ChangeEvent, ChangeKind
 
 _CREATE_CHANGES_TABLE = """
 CREATE TABLE IF NOT EXISTS changes (
@@ -39,12 +40,12 @@ CREATE TABLE IF NOT EXISTS checks (
 
 _INSERT_CHANGE = """
 INSERT INTO changes (watcher_name, timestamp, kind, key, title, price, old_price)
-VALUES (?, ?, ?, ?, ?, ?, ?)
+VALUES (:watcher_name, :timestamp, :kind, :key, :title, :price, :old_price)
 """
 
 _INSERT_CHECK = """
 INSERT INTO checks (watcher_name, timestamp, ok, duration_seconds, error)
-VALUES (?, ?, ?, ?, ?)
+VALUES (:watcher_name, :timestamp, :ok, :duration_seconds, :error)
 """
 
 _SELECT_CHANGES = """
@@ -98,6 +99,46 @@ class CheckRecord:
     error: str | None
 
 
+class _ChangeRow(TypedDict):
+    """Raw database row representation for inserting a change."""
+
+    watcher_name: str
+    timestamp: str
+    kind: str
+    key: str | None
+    title: str | None
+    price: float | None
+    old_price: float | None
+
+
+class _CheckRow(TypedDict):
+    """Raw database row representation for inserting a check."""
+
+    watcher_name: str
+    timestamp: str
+    ok: int
+    duration_seconds: float
+    error: str | None
+
+
+def _change_to_row(
+    watcher_name: str,
+    timestamp_iso: str,
+    change: Change,
+) -> _ChangeRow:
+    """Convert a single Change into a typed database row mapping."""
+    item = change.item or change.before
+    return {
+        "watcher_name": watcher_name,
+        "timestamp": timestamp_iso,
+        "kind": change.kind.value,
+        "key": item.key if item is not None else None,
+        "title": item.title if item is not None else None,
+        "price": change.item.price if change.item is not None else None,
+        "old_price": change.before.price if change.before is not None else None,
+    }
+
+
 class HistoryStore:
     """Appends changes and checks to SQLite and reads them back.
 
@@ -129,28 +170,12 @@ class HistoryStore:
         Raises:
             StorageError: If the database cannot be written.
         """
-        rows = [
-            (
-                event.watcher_name,
-                event.timestamp.isoformat(),
-                change.kind.value,
-                (
-                    change.item.key
-                    if change.item is not None
-                    else (change.before.key if change.before is not None else None)
-                ),
-                (
-                    change.item.title
-                    if change.item is not None
-                    else (change.before.title if change.before is not None else None)
-                ),
-                change.item.price if change.item is not None else None,
-                change.before.price if change.before is not None else None,
-            )
-            for change in event.changes
-        ]
-        if not rows:
+        if not event.changes:
             return
+        timestamp_iso = event.timestamp.isoformat()
+        rows = [
+            _change_to_row(event.watcher_name, timestamp_iso, change) for change in event.changes
+        ]
         with self._connect() as conn:
             conn.executemany(_INSERT_CHANGE, rows)
 
@@ -163,13 +188,13 @@ class HistoryStore:
         Raises:
             StorageError: If the database cannot be written.
         """
-        row = (
-            check.watcher_name,
-            check.timestamp.isoformat(),
-            int(check.ok),
-            check.duration_seconds,
-            check.error,
-        )
+        row: _CheckRow = {
+            "watcher_name": check.watcher_name,
+            "timestamp": check.timestamp.isoformat(),
+            "ok": int(check.ok),
+            "duration_seconds": check.duration_seconds,
+            "error": check.error,
+        }
         with self._connect() as conn:
             conn.execute(_INSERT_CHECK, row)
 

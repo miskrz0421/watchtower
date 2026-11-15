@@ -34,6 +34,6 @@ class HistoryRecorder:
         """Record a completed check event in the store."""
         self._store.record_check(event)
 
-    def _on_change_detected(self, event: ChangeDetected) -> None:
+    def _on_change_detected(self, detected: ChangeDetected) -> None:
         """Record detected changes in the store."""
-        self._store.record_changes(event.event)
+        self._store.record_changes(detected.event)
