@@ -287,3 +287,28 @@ PR that makes the decision.
   longer chains there.
   In the config, each entry listed under `all` or `any` becomes its own argument:
   `all: [a, b]` is built as `create_filter("all", a, b)`, not `create_filter("all", [a, b])`.
+
+## ADR-020: When the scheduler runs a check, and what it does with failures
+- Status: accepted · M3
+- Context: the scheduler runs watchers with different intervals in one loop (ADR-007), and one
+  broken website must not stop the others. Failures also reach the event bus, so the scheduler
+  and the observers could both report the same error.
+- Decision:
+  - A newly added watcher is due at once. After each check, successful or not, the next one is
+    due one `interval` after the check ends, read from the injected clock (ADR-008).
+  - The loop sleeps until the earliest due time, then runs every due watcher one after another.
+    `stop()` sets a flag; `run_forever` returns once the current round of checks is done.
+  - A `WatchtowerError` is the normal way a check fails, and the watcher already publishes it as
+    `FetchFailed` and `CheckCompleted`, so the scheduler logs it only at DEBUG. Any other exception
+    is a bug in a plugin: the scheduler logs it with its traceback. Both keep the loop running.
+  - `LoggingObserver` logs `CheckCompleted` (INFO, or WARNING with the error when it failed) and
+    `ChangeDetected` (INFO). It does not log `FetchFailed`, which carries the same error, so
+    every failure is logged once.
+- Alternatives: keeping a fixed rhythm from the first due time (after a long outage or a laptop
+  sleep, every missed check would run at once); the scheduler logging every failure at WARNING
+  (each failure would appear twice when a `LoggingObserver` is attached); a `threading.Event` to
+  wake the loop on `stop()` (not needed until the GUI runs the engine in a thread in M5).
+- Consequences: a slow check pushes its watcher's next check back by its duration. Without an
+  observer, expected failures are visible only at DEBUG, so the CLI always attaches a
+  `LoggingObserver` to `run`. `stop()` called from another thread takes effect after the current
+  sleep; M5 can replace the sleep with an event wait if that is too slow.

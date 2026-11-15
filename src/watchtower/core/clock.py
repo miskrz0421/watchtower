@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+import time
+from datetime import UTC, datetime, timedelta
 from typing import Protocol
 
 
@@ -35,7 +36,7 @@ class SystemClock:
         Returns:
             The current time in UTC.
         """
-        raise NotImplementedError
+        return datetime.now(UTC)
 
     def sleep(self, seconds: float) -> None:
         """Block the calling thread.
@@ -43,7 +44,7 @@ class SystemClock:
         Args:
             seconds: How long to block.
         """
-        raise NotImplementedError
+        time.sleep(seconds)
 
 
 class FakeClock:
@@ -54,8 +55,14 @@ class FakeClock:
 
         Args:
             start: Time the clock shows at first; must be timezone-aware.
+
+        Raises:
+            ValueError: If `start` has no time zone.
         """
-        raise NotImplementedError
+        if start.tzinfo is None:
+            msg = "FakeClock needs a timezone-aware start time"
+            raise ValueError(msg)
+        self._now = start
 
     def now(self) -> datetime:
         """Return the time the clock shows.
@@ -63,7 +70,7 @@ class FakeClock:
         Returns:
             The fake current time.
         """
-        raise NotImplementedError
+        return self._now
 
     def sleep(self, seconds: float) -> None:
         """Move the clock forward instead of waiting.
@@ -71,7 +78,7 @@ class FakeClock:
         Args:
             seconds: How far to move the clock.
         """
-        raise NotImplementedError
+        self.advance(seconds)
 
     def advance(self, seconds: float) -> None:
         """Move the clock forward from a test.
@@ -79,4 +86,4 @@ class FakeClock:
         Args:
             seconds: How far to move the clock.
         """
-        raise NotImplementedError
+        self._now += timedelta(seconds=seconds)
