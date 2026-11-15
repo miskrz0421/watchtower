@@ -58,7 +58,8 @@ class Filter(ABC):
             A `Not` of this filter.
         """
         return Not(self)
-    
+
+
 @register_filter("all")
 class And(Filter):
     """Accepts a change that every inner filter accepts.

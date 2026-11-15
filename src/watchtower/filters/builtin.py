@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import re
+
 from watchtower.filters.base import Filter
-from watchtower.models import Change
+from watchtower.models import Change, ChangeKind
 from watchtower.registry import register_filter
 
 
@@ -20,7 +22,31 @@ class NewItems(Filter):
         Returns:
             True if the kind of the change is NEW.
         """
-        raise NotImplementedError
+        return change.kind == ChangeKind.NEW
+
+
+@register_filter("kind_is")
+class KindIs(Filter):
+    """Accepts changes changes of one kind."""
+
+    def __init__(self, kind: str) -> None:
+        """Initialize KindIs.
+
+        Args:
+            kind: The kind of change to keep.
+        """
+        self._kind = ChangeKind(kind)
+
+    def matches(self, change: Change) -> bool:
+        """Return whether the change has the configured kind.
+
+        Args:
+            change: The change to evaluate.
+
+        Returns:
+            True if the change's kind matches; False otherwise.
+        """
+        return change.kind == self._kind
 
 
 @register_filter("price_below")
@@ -33,7 +59,7 @@ class PriceBelow(Filter):
         Args:
             limit: Price the item must be below.
         """
-        raise NotImplementedError
+        self._limit = limit
 
     def matches(self, change: Change) -> bool:
         """Return whether the item's price is below the limit.
@@ -44,7 +70,8 @@ class PriceBelow(Filter):
         Returns:
             True if the item has a price below the limit; False without a price.
         """
-        raise NotImplementedError
+        item = change.item
+        return item is not None and item.price is not None and item.price < self._limit
 
 
 @register_filter("price_above")
@@ -57,7 +84,7 @@ class PriceAbove(Filter):
         Args:
             limit: Price the item must be above.
         """
-        raise NotImplementedError
+        self._limit = limit
 
     def matches(self, change: Change) -> bool:
         """Return whether the item's price is above the limit.
@@ -68,7 +95,8 @@ class PriceAbove(Filter):
         Returns:
             True if the item has a price above the limit; False without a price.
         """
-        raise NotImplementedError
+        item = change.item
+        return item is not None and item.price is not None and item.price > self._limit
 
 
 @register_filter("text_contains")
@@ -81,7 +109,7 @@ class TextContains(Filter):
         Args:
             phrase: Phrase to look for in the item's title and text.
         """
-        raise NotImplementedError
+        self._phrase = phrase.casefold()
 
     def matches(self, change: Change) -> bool:
         """Return whether the item's title or text contains the phrase.
@@ -92,7 +120,10 @@ class TextContains(Filter):
         Returns:
             True if the phrase is found; False for a change without an item.
         """
-        raise NotImplementedError
+        item = change.item
+        if item is None:
+            return False
+        return self._phrase in item.title.casefold() or self._phrase in item.text.casefold()
 
 
 @register_filter("matches")
@@ -108,7 +139,11 @@ class Matches(Filter):
         Raises:
             ValueError: If the pattern is not a valid regular expression.
         """
-        raise NotImplementedError
+        try:
+            self._regex = re.compile(pattern)
+        except re.error as exc:
+            msg = f"Invalid regular expression: {pattern!r}"
+            raise ValueError(msg) from exc
 
     def matches(self, change: Change) -> bool:
         """Return whether the pattern is found in the item's title or text.
@@ -119,4 +154,9 @@ class Matches(Filter):
         Returns:
             True if the pattern is found; False for a change without an item.
         """
-        raise NotImplementedError
+        item = change.item
+        if item is None:
+            return False
+        return (
+            self._regex.search(item.title) is not None or self._regex.search(item.text) is not None
+        )
