@@ -89,7 +89,7 @@ def non_empty_string(value: object) -> str | None:
     """Return a non-blank string, or None when the value is missing or blank.
 
     Args:
-        value: Field value from a feed or an API response..
+        value: Field value from a feed or an API response.
 
     Returns:
         The value as a string, or None.

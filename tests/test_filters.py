@@ -96,6 +96,12 @@ def test_kind_is() -> None:
     assert not f.matches(Change(kind=ChangeKind.CHANGED))
 
 
+def test_kind_is_rejects_unknown_kind() -> None:
+    """Test KindIs rejects an unknown kind string."""
+    with pytest.raises(ValueError):
+        KindIs("nope")
+
+
 def test_kind_is_created_with_positional_argument() -> None:
     """Test that KindIs is created via create_filter with a positional arg."""
     created = create_filter("kind_is", "removed")
@@ -200,12 +206,6 @@ def test_composite_rejects_zero_filters(composite: type[And | Or]) -> None:
     """Test And and Or reject being constructed with no filters."""
     with pytest.raises(ValueError, match="At least one filter is required"):
         composite()
-
-
-def test_kind_is_rejects_unknown_kind() -> None:
-    """Test KindIs rejects an unknown kind string."""
-    with pytest.raises(ValueError):
-        KindIs("nope")
 
 
 def test_and() -> None:

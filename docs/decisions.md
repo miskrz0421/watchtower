@@ -285,3 +285,5 @@ PR that makes the decision.
   remove the whole block, because a single-element composite filter accepts exactly what its inner filter
   accepts. The `&` and `|` operators keep their two-argument behaviour in Python; nesting handles
   longer chains there.
+  In the config, each entry listed under `all` or `any` becomes its own argument:
+  `all: [a, b]` is built as `create_filter("all", a, b)`, not `create_filter("all", [a, b])`.

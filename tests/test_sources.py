@@ -513,10 +513,11 @@ def test_json_api_source_parses_saved_listings() -> None:
     assert items[1].text == "1 room, 30 m2"
 
 
-def test_json_api_source_reads_list_at_response_root() -> None:
-    """Test that without an items_path the response itself is the list."""
+@pytest.mark.parametrize("items_path", [None, "", "  "])
+def test_json_api_source_reads_list_at_response_root(items_path: str | None) -> None:
+    """Test that without an items_path (or a blank one) the response itself is the list."""
     raw = json.dumps([{"id": "a", "title": "One"}, {"id": "b", "title": "Two"}])
-    source = JSONAPISource(url="http://example.test/api/listings")
+    source = JSONAPISource(url="http://example.test/api/listings", items_path=items_path)
 
     items = list(source.parse(raw))
 
