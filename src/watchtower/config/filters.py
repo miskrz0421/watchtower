@@ -22,9 +22,7 @@ def _safe_create_leaf_filter(watcher_name: str, name: str, *args: Any) -> Filter
         raise ConfigError(msg) from err
 
 
-def _safe_create_composite_filter(
-    watcher_name: str, name: str, *inner_filters: Filter
-) -> Filter:
+def _safe_create_composite_filter(watcher_name: str, name: str, *inner_filters: Filter) -> Filter:
     """Instantiate a composite filter plugin, mapping exceptions to ConfigError."""
     registered = list_plugins("filter").get("filter", [])
     if name not in registered:
