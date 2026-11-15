@@ -234,14 +234,12 @@ PR that makes the decision.
   `name`, `source`, `diff`, and optionally `interval` (text such as `15m`), `filters` and
   `notify`. `source`, `diff` and each `notify` entry are mappings with a `type` (the registry
   name); every other key is passed to the plugin's constructor as a keyword argument.
-- Filters use a shorter form, because most take one value: an entry is either a name
-  (`new_items`) or a mapping with one key, the registry name, whose value is passed as the
-  only positional argument (`price_below: 3000`). The composite filters `all`, `any` and
-  `not` take filter entries as their value, so rules nest. The filters listed under `filters`
-  must all pass.
-- Alternatives: `type` + keyword arguments for filters too (uniform, but `{type: price_below,
-  limit: 3000}` is long for the most common line of a config); a small expression language
-  (`price < 3000 and not agency`: needs a parser of our own).
+- Filters are a special case: most take a single value, so an entry is either a plain name
+  (`new_items`) or a mapping with one key — the registry name — whose value is passed positionally
+  (`price_below: 3000`). The composite filters `all` and `any` take any number of filter entries
+  as their value; `not` takes one. Rules can nest, or combine many filters at once (see ADR-019).
+  The filters listed under `filters` must all pass.
+- Alternatives: a small expression language (`price < 3000 and not agency`: needs a parser of our own).
 - Consequences: `create_filter` accepts positional arguments. A filter with several parameters
   takes a mapping as its one argument or is written in Python.
 

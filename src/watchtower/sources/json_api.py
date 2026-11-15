@@ -47,7 +47,9 @@ class JSONAPISource(HttpSource):
             transport: Optional transport used by tests.
         """
         super().__init__(url, timeout=timeout, transport=transport)
-        self._items_path = [] if items_path is None else items_path.split(".")
+        self._items_path = (
+            [] if items_path is None or items_path.strip() == "" else items_path.split(".")
+        )
         self._key_field = key_field
         self._title_field = title_field
         self._url_field = url_field
@@ -89,15 +91,16 @@ class JSONAPISource(HttpSource):
             ParseError: If the path does not exist in the response or does
                 not lead to a list.
         """
-        path = ".".join(self._items_path)
         for part in self._items_path:
             if not isinstance(data, Mapping) or part not in data:
-                msg = f"Path {path!r} does not exist in the response"
+                msg = f"Path {'.'.join(self._items_path)!r} does not exist in the response"
                 raise ParseError(msg)
             data = data[part]
         if not isinstance(data, list):
             msg = (
-                f"Path {path!r} does not lead to a list" if path else "Response is not a JSON list"
+                "Response is not a JSON list"
+                if len(self._items_path) == 0
+                else f"Path {'.'.join(self._items_path)!r} does not lead to a list"
             )
             raise ParseError(msg)
         return data
@@ -131,9 +134,7 @@ class JSONAPISource(HttpSource):
 
         url = non_empty_string(obj.get(self._url_field)) if self._url_field else None
         price = _price(obj.get(self._price_field)) if self._price_field else None
-        text = ""
-        if self._text_field:
-            text = non_empty_string(obj.get(self._text_field)) or ""
+        text = (non_empty_string(obj.get(self._text_field)) or "") if self._text_field else ""
         return Item(key=key, title=title, url=url, price=price, text=text)
 
 

@@ -1,4 +1,4 @@
-"""Base Filter interface implementing the Specification pattern."""
+"""Base Filter interface and composite filters (Specification and Composite patterns)."""
 
 from __future__ import annotations
 
@@ -72,6 +72,9 @@ class And(Filter):
 
         Args:
             *filters: Filters that must all accept a change.
+
+        Raises:
+            ValueError: If no filters are given.
         """
         if len(filters) == 0:
             raise ValueError("At least one filter is required.")
@@ -84,9 +87,9 @@ class And(Filter):
             change: The change to evaluate.
 
         Returns:
-            True if all inner filters accept it; True when there are none.
+            True if all inner filters accept it.
         """
-        return all(filter.matches(change) for filter in self._filters)
+        return all(inner.matches(change) for inner in self._filters)
 
 
 @register_filter("any")
@@ -101,6 +104,9 @@ class Or(Filter):
 
         Args:
             *filters: Filters of which one must accept a change.
+
+        Raises:
+            ValueError: If no filters are given.
         """
         if len(filters) == 0:
             raise ValueError("At least one filter is required.")
@@ -113,9 +119,9 @@ class Or(Filter):
             change: The change to evaluate.
 
         Returns:
-            True if an inner filter accepts it; False when there are none.
+            True if an inner filter accepts it.
         """
-        return any(filter.matches(change) for filter in self._filters)
+        return any(inner.matches(change) for inner in self._filters)
 
 
 @register_filter("not")

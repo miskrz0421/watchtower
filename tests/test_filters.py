@@ -146,6 +146,22 @@ def test_matches_does_not_concatenate_title_and_text() -> None:
     assert f.matches(Change(kind=ChangeKind.CHANGED, item=together))
 
 
+def test_matches() -> None:
+    """Test Matches searches the item's title and text with a regular expression."""
+    f = Matches(r"\d+\.\d{2}")
+
+    price_title = Item(key="k1", title="Price $19.99", text="")
+    assert f.matches(Change(kind=ChangeKind.CHANGED, item=price_title))
+    price_text = Item(key="k1", title="", text="cost 19.99")
+    assert f.matches(Change(kind=ChangeKind.CHANGED, item=price_text))
+    no_decimals = Item(key="k1", title="Price 19", text="")
+    assert not f.matches(Change(kind=ChangeKind.CHANGED, item=no_decimals))
+    assert not f.matches(Change(kind=ChangeKind.REMOVED))  # no item
+
+    with pytest.raises(ValueError):
+        Matches("[")
+
+
 def test_and_with_one_and_many_filters() -> None:
     """Test And accepts exactly one filter and more than two filters."""
     one = And(PriceBelow(100))
@@ -179,20 +195,17 @@ def test_or_with_one_and_many_filters() -> None:
     assert not many.matches(Change(kind=ChangeKind.CHANGED, item=mid))
 
 
-def test_matches() -> None:
-    """Test Matches searches the item's title and text with a regular expression."""
-    f = Matches(r"\d+\.\d{2}")
+@pytest.mark.parametrize("composite", [And, Or])
+def test_composite_rejects_zero_filters(composite: type[And | Or]) -> None:
+    """Test And and Or reject being constructed with no filters."""
+    with pytest.raises(ValueError, match="At least one filter is required"):
+        composite()
 
-    price_title = Item(key="k1", title="Price $19.99", text="")
-    assert f.matches(Change(kind=ChangeKind.CHANGED, item=price_title))
-    price_text = Item(key="k1", title="", text="cost 19.99")
-    assert f.matches(Change(kind=ChangeKind.CHANGED, item=price_text))
-    no_decimals = Item(key="k1", title="Price 19", text="")
-    assert not f.matches(Change(kind=ChangeKind.CHANGED, item=no_decimals))
-    assert not f.matches(Change(kind=ChangeKind.REMOVED))  # no item
 
+def test_kind_is_rejects_unknown_kind() -> None:
+    """Test KindIs rejects an unknown kind string."""
     with pytest.raises(ValueError):
-        Matches("[")
+        KindIs("nope")
 
 
 def test_and() -> None:

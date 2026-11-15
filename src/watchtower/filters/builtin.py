@@ -27,13 +27,16 @@ class NewItems(Filter):
 
 @register_filter("kind_is")
 class KindIs(Filter):
-    """Accepts changes changes of one kind."""
+    """Accepts changes of one kind."""
 
     def __init__(self, kind: str) -> None:
         """Initialize KindIs.
 
         Args:
             kind: The kind of change to keep.
+
+        Raises:
+            ValueError: If kind is not a ChangeKind value.
         """
         self._kind = ChangeKind(kind)
 
