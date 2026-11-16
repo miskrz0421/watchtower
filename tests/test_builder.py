@@ -94,6 +94,12 @@ def test_optional_parts_have_defaults() -> None:
     assert watcher.event_bus is None
 
 
+def test_store_none_keeps_snapshots_in_memory(tmp_path: Path) -> None:
+    """Test that store(None) removes a store set before, as a config without a database does."""
+    builder = _text_builder().store(SnapshotStore(tmp_path / "state.db"))
+    assert builder.store(None).build().store is None
+
+
 def test_filters_and_notifiers_add_up_over_several_calls() -> None:
     """Test that only_if and notify append instead of replacing."""
     accept, reject = _AcceptAll(), _RejectAll()

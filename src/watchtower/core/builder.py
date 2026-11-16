@@ -105,11 +105,11 @@ class WatcherBuilder:
         self._notifiers.extend(notifiers)
         return self
 
-    def store(self, store: SnapshotStore) -> Self:
+    def store(self, store: SnapshotStore | None) -> Self:
         """Set the store that keeps the last snapshot between runs.
 
         Args:
-            store: Store to use.
+            store: Store to use; None keeps the last snapshot in memory only.
 
         Returns:
             This builder.

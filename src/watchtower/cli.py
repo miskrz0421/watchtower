@@ -3,169 +3,172 @@
 from __future__ import annotations
 
 import argparse
+import logging
 import sys
 from pathlib import Path
 
+from watchtower.config.loader import Config, load_config
+from watchtower.core.logging_observer import LoggingObserver
+from watchtower.core.scheduler import Scheduler
 from watchtower.core.watcher import Watcher
-from watchtower.diffs.items import ItemDiff
-from watchtower.diffs.text import TextDiff
 from watchtower.errors import WatchtowerError
 from watchtower.events import EventBus
-from watchtower.notifiers.console import ConsoleNotifier
-from watchtower.sources.fake import FakeSource
-from watchtower.sources.file import FileSource
-from watchtower.sources.webpage import WebPageSource
+from watchtower.models import ChangeEvent
+from watchtower.registry import list_plugins
+from watchtower.storage.history import HistoryStore
+from watchtower.storage.recorder import HistoryRecorder
 from watchtower.storage.snapshots import SnapshotStore
 
-_DEMO_PAGES = [
-    "Welcome to Watchtower Listings\n1. Flat in Stare Miasto - 3500 PLN\n",
-    (
-        "Welcome to Watchtower Listings\n"
-        "1. Flat in Stare Miasto - 3500 PLN\n"
-        "2. Flat in Krowodrza - 2800 PLN [NEW!]\n"
-    ),
-]
-
-# 127.0.0.1 rather than localhost: localhost can resolve to IPv6 first, while
-# the fake listings server listens on IPv4 only.
-_LISTINGS_URL = "http://127.0.0.1:8000/listings"
+_LOG_FORMAT = "%(asctime)s %(levelname)s %(message)s"
 
 
-def _build_demo_watcher() -> Watcher:
-    """Create a watcher that replays the scripted demo pages.
-
-    Returns:
-        A watcher with a FakeSource, a TextDiff and a console notifier.
-    """
-    return Watcher(
-        name="Krakow Flats Watcher",
-        source=FakeSource(contents=_DEMO_PAGES),
-        differ=TextDiff(),
-        notifiers=[ConsoleNotifier()],
-        event_bus=EventBus(),
-    )
+def _configure_logging() -> None:
+    """Show Watchtower's own log at INFO, and other libraries' only from WARNING."""
+    logging.basicConfig(level=logging.WARNING, format=_LOG_FORMAT)
+    logging.getLogger("watchtower").setLevel(logging.INFO)
 
 
-def _run_demo_check() -> int:
-    """Run an end-to-end M1 demonstration check using FakeSource and TextDiff.
-
-    Executes two consecutive checks:
-    1. Initial check: establishes baseline (no changes reported per ADR-004).
-    2. Second check: detects and prints unified text diff to the console.
-
-    Returns:
-        0 on success.
-    """
-    print("=== Watchtower M1 Demo: Foundations ===")
-    watcher = _build_demo_watcher()
-
-    print("\n[Step 1] Running initial check (establishing baseline)...")
-    event1 = watcher.check_once()
-    if event1 is None:
-        print("-> Baseline captured successfully. No changes reported (as expected).")
-
-    print("\n[Step 2] Running second check (detecting content change)...")
-    event2 = watcher.check_once()
-    if event2 is not None:
-        print("-> Change successfully detected and printed above!")
-
-    print("\n=== Demo completed successfully ===")
-    return 0
-
-
-def _build_listings_watcher(url: str, store: SnapshotStore) -> Watcher:
-    """Create the M2 demo watcher for the fake listings server.
-
-    The watcher is hard-coded until YAML config arrives in M3. Its source
-    follows the HTML contract in examples/fake_listings/README.md.
+def _open_database(database: Path | None, event_bus: EventBus) -> SnapshotStore | None:
+    """Open the config's database for snapshots and start recording history in it.
 
     Args:
-        url: Address of the listings page.
-        store: Store keeping the last snapshot between runs.
+        database: SQLite file named in the config, or None if it names none.
+        event_bus: Bus whose checks and changes are recorded.
 
     Returns:
-        A watcher with a WebPageSource, an ItemDiff and a console notifier.
-    """
-    source = WebPageSource(
-        url,
-        selector=".offer",
-        title_selector=".title",
-        price_selector=".price",
-        key_attribute="data-id",
-    )
-    return Watcher(
-        name="Krakow flats",
-        source=source,
-        differ=ItemDiff(),
-        notifiers=[ConsoleNotifier()],
-        store=store,
-    )
-
-
-def _run_saved_check(watcher: Watcher, store: SnapshotStore) -> int:
-    """Run one check of a watcher whose state is kept in a store.
-
-    Changes are printed by the watcher's notifiers. This function only says
-    when there was nothing to print, so a quiet run never looks like it did
-    nothing by mistake.
-
-    Args:
-        watcher: Watcher to check; it must use `store`.
-        store: Store holding the watcher's previous snapshot.
-
-    Returns:
-        0 on success.
+        The snapshot store, or None when the config has no database.
 
     Raises:
-        WatchtowerError: If the source or the store fails.
+        StorageError: If the database cannot be opened.
     """
-    is_first_run = store.load(watcher.name) is None
-    event = watcher.check_once()
+    if database is None:
+        return None
+    HistoryRecorder(HistoryStore(database)).attach(event_bus)
+    return SnapshotStore(database)
 
+
+def _build_watchers(config: Config, event_bus: EventBus) -> list[Watcher]:
+    """Build every watcher of a config, sharing one event bus and one database.
+
+    Args:
+        config: Loaded config file.
+        event_bus: Bus all watchers publish on.
+
+    Returns:
+        The watchers, in file order.
+
+    Raises:
+        WatchtowerError: If the database cannot be opened or a watcher is incomplete.
+    """
+    store = _open_database(config.database, event_bus)
+    return [builder.store(store).event_bus(event_bus).build() for builder in config.watchers]
+
+
+def _describe_check(watcher_name: str, is_first_run: bool, event: ChangeEvent | None) -> str:
+    """Say in one line what a check found.
+
+    Args:
+        watcher_name: Name of the checked watcher.
+        is_first_run: Whether there was no snapshot to compare with.
+        event: Changes the check reported, or None.
+
+    Returns:
+        The line to print.
+    """
     if is_first_run:
-        print(f"Baseline saved for {watcher.name!r}. Run again to see changes.")
-    elif event is None:
-        print(f"No changes for {watcher.name!r}.")
+        return f"{watcher_name}: baseline saved"
+    if event is None:
+        return f"{watcher_name}: no changes"
+    return f"{watcher_name}: {event.summary}"
+
+
+def _check_watcher(watcher: Watcher) -> bool:
+    """Check one watcher and print what it found, or why it failed.
+
+    The changes themselves are printed by the watcher's notifiers; the line
+    printed here makes a quiet check visibly different from a broken one.
+
+    Args:
+        watcher: Watcher to check.
+
+    Returns:
+        True if the check succeeded.
+    """
+    try:
+        is_first_run = watcher.store is None or watcher.store.load(watcher.name) is None
+        event = watcher.check_once()
+    except WatchtowerError as err:
+        print(f"Error: {watcher.name}: {err}", file=sys.stderr)
+        return False
+    print(_describe_check(watcher.name, is_first_run, event))
+    return True
+
+
+def _check_command(args: argparse.Namespace) -> int:
+    """Check every watcher of a config file once.
+
+    A failing watcher is reported and the others are still checked.
+
+    Args:
+        args: Parsed arguments with the `config` path.
+
+    Returns:
+        0 if every check succeeded, 1 otherwise.
+
+    Raises:
+        WatchtowerError: If the config or the database cannot be used.
+    """
+    watchers = _build_watchers(load_config(args.config), EventBus())
+    results = [_check_watcher(watcher) for watcher in watchers]
+    return 0 if all(results) else 1
+
+
+def _run_command(args: argparse.Namespace) -> int:
+    """Run the watchers of a config file at their intervals until Ctrl+C.
+
+    Args:
+        args: Parsed arguments with the `config` path.
+
+    Returns:
+        0 when stopped with Ctrl+C.
+
+    Raises:
+        WatchtowerError: If the config or the database cannot be used.
+    """
+    event_bus = EventBus()
+    LoggingObserver().attach(event_bus)
+    scheduler = Scheduler()
+    watchers = _build_watchers(load_config(args.config), event_bus)
+    for watcher in watchers:
+        scheduler.add(watcher)
+
+    _configure_logging()
+    print(f"Running {len(watchers)} watcher(s). Press Ctrl+C to stop.")
+    try:
+        scheduler.run_forever()
+    except KeyboardInterrupt:
+        print("Stopped.")
     return 0
 
 
-def _run_file_check(file_path: Path, db_path: Path | None) -> int:
-    """Check a local file for changes since the previous run.
+def _plugins_command(args: argparse.Namespace) -> int:
+    """Print the names of the registered plugins, by kind.
 
     Args:
-        file_path: Path to the monitored file.
-        db_path: SQLite file keeping the previous contents. Required, since
-            without it there is nothing to compare with.
+        args: Parsed arguments; the command takes none.
 
     Returns:
-        0 on success, non-zero on failure.
-
-    Raises:
-        WatchtowerError: If the file cannot be read or the store fails.
+        0.
     """
-    if not file_path.exists():
-        print(f"Error: File not found: {file_path}", file=sys.stderr)
-        return 1
-    if db_path is None:
-        print(
-            "Error: checking a file needs --db PATH to compare it with the previous run",
-            file=sys.stderr,
-        )
-        return 2
-
-    store = SnapshotStore(db_path)
-    watcher = Watcher(
-        name=f"file:{file_path.resolve()}",
-        source=FileSource(path=file_path),
-        differ=TextDiff(),
-        notifiers=[ConsoleNotifier()],
-        store=store,
-    )
-    return _run_saved_check(watcher, store)
+    for kind, names in list_plugins().items():
+        print(f"{kind}: {', '.join(names)}")
+    return 0
 
 
 def _build_parser() -> argparse.ArgumentParser:
     """Create the command-line parser with its subcommands.
+
+    Each subcommand stores the function that runs it as `handler`.
 
     Returns:
         The parser for the `watchtower` command.
@@ -176,48 +179,17 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     subparsers = parser.add_subparsers(dest="command", help="Available subcommands")
 
-    check_parser = subparsers.add_parser("check", help="Run watchers once")
-    check_parser.add_argument(
-        "target",
-        nargs="?",
-        type=Path,
-        default=None,
-        help="File to check; without it, --db checks the demo listings page "
-        "and no arguments run the built-in M1 demo",
-    )
-    check_parser.add_argument(
-        "--db",
-        type=Path,
-        default=None,
-        metavar="PATH",
-        help="SQLite file that keeps the last snapshot between runs",
-    )
-    check_parser.add_argument(
-        "--url",
-        default=_LISTINGS_URL,
-        help=f"listings page checked by --db without a file (default: {_LISTINGS_URL})",
-    )
+    check_parser = subparsers.add_parser("check", help="Check every watcher of a config once")
+    check_parser.add_argument("config", type=Path, help="YAML config file")
+    check_parser.set_defaults(handler=_check_command)
+
+    run_parser = subparsers.add_parser("run", help="Run the watchers of a config until Ctrl+C")
+    run_parser.add_argument("config", type=Path, help="YAML config file")
+    run_parser.set_defaults(handler=_run_command)
+
+    plugins_parser = subparsers.add_parser("plugins", help="List the registered plugins")
+    plugins_parser.set_defaults(handler=_plugins_command)
     return parser
-
-
-def _run_check(args: argparse.Namespace) -> int:
-    """Run the variant of the `check` command chosen by the arguments.
-
-    Args:
-        args: Parsed arguments of the `check` command.
-
-    Returns:
-        Exit code of the check.
-
-    Raises:
-        WatchtowerError: If a source or the store fails.
-    """
-    if args.target is not None:
-        return _run_file_check(args.target, args.db)
-    if args.db is not None:
-        store = SnapshotStore(args.db)
-        return _run_saved_check(_build_listings_watcher(args.url, store), store)
-    return _run_demo_check()
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -232,11 +204,12 @@ def main(argv: list[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
 
-    if args.command != "check":
+    if args.command is None:
         parser.print_help()
         return 0
     try:
-        return _run_check(args)
+        exit_code: int = args.handler(args)
     except WatchtowerError as err:
         print(f"Error: {err}", file=sys.stderr)
-        return 1
+        exit_code = 1
+    return exit_code

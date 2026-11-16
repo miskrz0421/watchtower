@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import socket
 from pathlib import Path
 
@@ -9,106 +10,221 @@ import pytest
 
 from conftest import SAMPLE_LISTINGS, FakeListings
 from watchtower.cli import main
+from watchtower.core.scheduler import Scheduler
+from watchtower.storage.history import HistoryStore
 
 
-def test_cli_check_demo(capsys: pytest.CaptureFixture[str]) -> None:
-    """Test running watchtower check with no arguments executes M1 demo."""
-    code = main(["check"])
-    assert code == 0
-
-    captured = capsys.readouterr()
-    assert "Watchtower M1 Demo: Foundations" in captured.out
-    assert "Flat in Krowodrza - 2800 PLN [NEW!]" in captured.out
-    assert "Demo completed successfully" in captured.out
+def _write_config(folder: Path, text: str) -> Path:
+    """Write a config file into the folder and return its path."""
+    config = folder / "config.yaml"
+    config.write_text(text, encoding="utf-8")
+    return config
 
 
-def test_cli_check_file_reports_change_between_runs(
+def _file_config(folder: Path, watched: Path, database: str | None = "watchtower.db") -> Path:
+    """Write a config with one text watcher on a local file."""
+    database_line = f"database: {database}\n" if database is not None else ""
+    return _write_config(
+        folder,
+        database_line
+        + f"""
+watchers:
+  - name: Notes
+    source: {{ type: file, path: "{watched}" }}
+    diff: {{ type: text }}
+    notify: [{{ type: console }}]
+""",
+    )
+
+
+def _flats_config(folder: Path, base_url: str) -> Path:
+    """Write the demo config: new flats under 3000 without agencies."""
+    return _write_config(
+        folder,
+        f"""
+database: watchtower.db
+watchers:
+  - name: Cheap flats
+    source:
+      type: webpage
+      url: "{base_url}/listings"
+      selector: ".offer"
+      title_selector: ".title"
+      price_selector: ".price"
+      key_attribute: "data-id"
+    interval: 30s
+    diff: {{ type: items }}
+    filters:
+      - new_items
+      - price_below: 3000
+      - not: {{ text_contains: agency }}
+    notify: [{{ type: console }}]
+""",
+    )
+
+
+def test_no_command_prints_help(capsys: pytest.CaptureFixture[str]) -> None:
+    """Test that watchtower without a command prints the help text."""
+    assert main([]) == 0
+    assert "usage: watchtower" in capsys.readouterr().out
+
+
+def test_plugins_lists_every_kind(capsys: pytest.CaptureFixture[str]) -> None:
+    """Test that the plugins command prints the registered names by kind."""
+    assert main(["plugins"]) == 0
+    out = capsys.readouterr().out
+    assert "source: fake, file, json_api, rss, webpage" in out
+    assert "differ: items, text" in out
+    assert "notifier: console" in out
+
+
+def test_check_reports_file_change_between_runs(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Test that check FILE --db saves a baseline, then shows what changed since."""
-    target_file = tmp_path / "watch_me.txt"
-    db = str(tmp_path / "watchtower.db")
-    target_file.write_text("initial contents\n", encoding="utf-8")
+    """Test that check saves a baseline, then shows what changed since the last run."""
+    watched = tmp_path / "notes.txt"
+    watched.write_text("initial contents\n", encoding="utf-8")
+    config = _file_config(tmp_path, watched)
 
-    assert main(["check", str(target_file), "--db", db]) == 0
-    assert "Baseline saved" in capsys.readouterr().out
+    assert main(["check", str(config)]) == 0
+    assert "Notes: baseline saved" in capsys.readouterr().out
 
-    assert main(["check", str(target_file), "--db", db]) == 0
-    assert "No changes" in capsys.readouterr().out
+    assert main(["check", str(config)]) == 0
+    assert "Notes: no changes" in capsys.readouterr().out
 
-    target_file.write_text("edited contents\n", encoding="utf-8")
-    assert main(["check", str(target_file), "--db", db]) == 0
+    watched.write_text("edited contents\n", encoding="utf-8")
+    assert main(["check", str(config)]) == 0
     out = capsys.readouterr().out
     assert "-initial contents" in out
     assert "+edited contents" in out
+    assert "Notes: 1 change(s) detected" in out
 
 
-def test_cli_check_file_without_db_fails(
+def test_check_without_database_starts_from_scratch(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Test that checking a file without --db explains why it cannot work."""
-    target_file = tmp_path / "watch_me.txt"
-    target_file.write_text("initial contents\n", encoding="utf-8")
+    """Test that without a database every check is a baseline."""
+    watched = tmp_path / "notes.txt"
+    watched.write_text("contents\n", encoding="utf-8")
+    config = _file_config(tmp_path, watched, database=None)
 
-    assert main(["check", str(target_file)]) == 2
-    assert "needs --db PATH" in capsys.readouterr().err
-
-
-def test_cli_storage_error_is_reported(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    """Test that an unusable database path gives an error message, not a traceback."""
-    target_file = tmp_path / "watch_me.txt"
-    target_file.write_text("initial contents\n", encoding="utf-8")
-    db = str(tmp_path / "missing" / "watchtower.db")
-
-    assert main(["check", str(target_file), "--db", db]) == 1
-    assert "Error: Cannot open snapshot database" in capsys.readouterr().err
+    assert main(["check", str(config)]) == 0
+    assert main(["check", str(config)]) == 0
+    assert capsys.readouterr().out.count("Notes: baseline saved") == 2
 
 
-def test_cli_check_file_nonexistent(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    """Test running watchtower check with a nonexistent file path fails."""
-    nonexistent = tmp_path / "does_not_exist.txt"
-    code = main(["check", str(nonexistent)])
-    assert code == 1
+def test_check_records_history(tmp_path: Path) -> None:
+    """Test that every check is saved to the history in the config's database."""
+    watched = tmp_path / "notes.txt"
+    watched.write_text("contents\n", encoding="utf-8")
+    config = _file_config(tmp_path, watched)
 
+    main(["check", str(config)])
+    main(["check", str(config)])
+
+    checks = list(HistoryStore(tmp_path / "watchtower.db").checks())
+    assert [(check.watcher_name, check.ok) for check in checks] == [("Notes", True)] * 2
+
+
+def test_check_goes_on_after_a_failing_watcher(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Test that one broken watcher is reported and the next one still runs."""
+    watched = tmp_path / "notes.txt"
+    watched.write_text("contents\n", encoding="utf-8")
+    config = _write_config(
+        tmp_path,
+        f"""
+watchers:
+  - name: Missing
+    source: {{ type: file, path: "{tmp_path / "missing.txt"}" }}
+    diff: {{ type: text }}
+  - name: Notes
+    source: {{ type: file, path: "{watched}" }}
+    diff: {{ type: text }}
+""",
+    )
+
+    assert main(["check", str(config)]) == 1
     captured = capsys.readouterr()
-    assert "Error: File not found" in captured.err
+    assert "Error: Missing:" in captured.err
+    assert "Notes: baseline saved" in captured.out
 
 
-def test_cli_no_args_prints_help(capsys: pytest.CaptureFixture[str]) -> None:
-    """Test running watchtower without arguments prints help text."""
-    code = main([])
-    assert code == 0
+def test_missing_config_is_an_error(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """Test that a config file that does not exist gives an error, not a traceback."""
+    assert main(["check", str(tmp_path / "missing.yaml")]) == 1
+    assert capsys.readouterr().err.startswith("Error:")
 
-    captured = capsys.readouterr()
-    assert "usage: watchtower" in captured.out
+
+def test_unusable_database_is_an_error(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """Test that a database in a folder that does not exist gives an error message."""
+    watched = tmp_path / "notes.txt"
+    watched.write_text("contents\n", encoding="utf-8")
+    config = _file_config(tmp_path, watched, database="missing/watchtower.db")
+
+    assert main(["check", str(config)]) == 1
+    assert capsys.readouterr().err.startswith("Error:")
+
+
+def test_run_checks_until_ctrl_c(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Test that run starts the scheduler with logging and stops cleanly on Ctrl+C."""
+
+    def run_once_then_ctrl_c(scheduler: Scheduler) -> None:
+        """Run the due checks, then act as if the user pressed Ctrl+C."""
+        scheduler.run_pending()
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(Scheduler, "run_forever", run_once_then_ctrl_c)
+    watched = tmp_path / "notes.txt"
+    watched.write_text("contents\n", encoding="utf-8")
+
+    with caplog.at_level(logging.INFO):
+        assert main(["run", str(_file_config(tmp_path, watched))]) == 0
+
+    out = capsys.readouterr().out
+    assert "Running 1 watcher(s)" in out
+    assert "Stopped." in out
+    assert "Checked 'Notes'" in caplog.text
+    assert len(list(HistoryStore(tmp_path / "watchtower.db").checks())) == 1
 
 
 @pytest.mark.network
-def test_cli_check_db_reports_new_listing(
+def test_check_reports_only_cheap_new_flats(
     tmp_path: Path, fake_listings: FakeListings, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Test the M2 demo: baseline, a new listing is reported, then no false alert."""
-    url = f"{fake_listings.base_url}/listings"
-    args = ["check", "--db", str(tmp_path / "watchtower.db"), "--url", url]
+    """Test the M3 demo: only a new flat under 3000 without an agency is reported."""
+    config = _flats_config(tmp_path, fake_listings.base_url)
+    assert main(["check", str(config)]) == 0
+    assert "Cheap flats: baseline saved" in capsys.readouterr().out
 
-    assert main(args) == 0
-    assert "Baseline saved for 'Krakow flats'" in capsys.readouterr().out
+    new_flats = [
+        {"id": "3", "title": "Flat Krowodrza", "price": 2800, "description": ""},
+        {"id": "4", "title": "Flat Podgorze", "price": 4200, "description": ""},
+        {"id": "5", "title": "Agency flat", "price": 2000, "description": ""},
+    ]
+    fake_listings.write([*SAMPLE_LISTINGS, *new_flats])
+    assert main(["check", str(config)]) == 0
+    out = capsys.readouterr().out
+    assert "Flat Krowodrza" in out
+    assert "Flat Podgorze" not in out
+    assert "Agency flat" not in out
 
-    new = {"id": "3", "title": "Flat Krowodrza", "price": 2800, "description": ""}
-    fake_listings.write([*SAMPLE_LISTINGS, new])
-    assert main(args) == 0
-    assert "Flat Krowodrza" in capsys.readouterr().out
-
-    assert main(args) == 0
-    assert "No changes for 'Krakow flats'" in capsys.readouterr().out
+    changes = list(HistoryStore(tmp_path / "watchtower.db").changes())
+    assert [change.title for change in changes] == ["Flat Krowodrza"]
 
 
-def test_cli_check_db_server_down(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    """Test that an unreachable listings page gives an error message, not a traceback."""
+def test_check_server_down(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """Test that an unreachable website gives an error naming the watcher."""
     with socket.socket() as sock:
         sock.bind(("127.0.0.1", 0))
         free_port = sock.getsockname()[1]
-    url = f"http://127.0.0.1:{free_port}/listings"
+    config = _flats_config(tmp_path, f"http://127.0.0.1:{free_port}")
 
-    assert main(["check", "--db", str(tmp_path / "watchtower.db"), "--url", url]) == 1
-    assert "Error:" in capsys.readouterr().err
+    assert main(["check", str(config)]) == 1
+    assert "Error: Cheap flats:" in capsys.readouterr().err
