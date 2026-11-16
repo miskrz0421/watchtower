@@ -17,6 +17,7 @@ dependencies = [
     "beautifulsoup4>=4.12",
     "feedparser>=6.0",
     "pyyaml>=6.0",
+    "dedent>=1.0.0",
 ]
 
 # Everything a developer runs has a name here: `uv run <name>`.

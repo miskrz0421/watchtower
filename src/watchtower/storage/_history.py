@@ -10,69 +10,71 @@ from datetime import datetime
 from pathlib import Path
 from typing import TypedDict
 
+from dedent import dedent
+
 from watchtower._errors import StorageError
 from watchtower._events import CheckCompleted
 from watchtower._models import Change, ChangeEvent, ChangeKind
 
-_CREATE_CHANGES_TABLE = """
-CREATE TABLE IF NOT EXISTS changes (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    watcher_name TEXT NOT NULL,
-    timestamp TEXT NOT NULL,
-    kind TEXT NOT NULL,
-    key TEXT,
-    title TEXT,
-    price REAL,
-    old_price REAL
-)
-"""
+_CREATE_CHANGES_TABLE = dedent("""
+    CREATE TABLE IF NOT EXISTS changes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        watcher_name TEXT NOT NULL,
+        timestamp TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        key TEXT,
+        title TEXT,
+        price REAL,
+        old_price REAL
+    )
+    """)
 
-_CREATE_CHECKS_TABLE = """
-CREATE TABLE IF NOT EXISTS checks (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    watcher_name TEXT NOT NULL,
-    timestamp TEXT NOT NULL,
-    ok INTEGER NOT NULL,
-    duration_seconds REAL NOT NULL,
-    error TEXT
-)
-"""
+_CREATE_CHECKS_TABLE = dedent("""
+    CREATE TABLE IF NOT EXISTS checks (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        watcher_name TEXT NOT NULL,
+        timestamp TEXT NOT NULL,
+        ok INTEGER NOT NULL,
+        duration_seconds REAL NOT NULL,
+        error TEXT
+    )
+    """)
 
-_INSERT_CHANGE = """
-INSERT INTO changes (watcher_name, timestamp, kind, key, title, price, old_price)
-VALUES (:watcher_name, :timestamp, :kind, :key, :title, :price, :old_price)
-"""
+_INSERT_CHANGE = dedent("""
+    INSERT INTO changes (watcher_name, timestamp, kind, key, title, price, old_price)
+    VALUES (:watcher_name, :timestamp, :kind, :key, :title, :price, :old_price)
+    """)
 
-_INSERT_CHECK = """
-INSERT INTO checks (watcher_name, timestamp, ok, duration_seconds, error)
-VALUES (:watcher_name, :timestamp, :ok, :duration_seconds, :error)
-"""
+_INSERT_CHECK = dedent("""
+    INSERT INTO checks (watcher_name, timestamp, ok, duration_seconds, error)
+    VALUES (:watcher_name, :timestamp, :ok, :duration_seconds, :error)
+    """)
 
-_SELECT_CHANGES = """
-SELECT watcher_name, timestamp, kind, key, title, price, old_price
-FROM changes
-ORDER BY id ASC
-"""
+_SELECT_CHANGES = dedent("""
+    SELECT watcher_name, timestamp, kind, key, title, price, old_price
+    FROM changes
+    ORDER BY id ASC
+    """)
 
-_SELECT_CHANGES_FOR_WATCHER = """
-SELECT watcher_name, timestamp, kind, key, title, price, old_price
-FROM changes
-WHERE watcher_name = ?
-ORDER BY id ASC
-"""
+_SELECT_CHANGES_FOR_WATCHER = dedent("""
+    SELECT watcher_name, timestamp, kind, key, title, price, old_price
+    FROM changes
+    WHERE watcher_name = ?
+    ORDER BY id ASC
+    """)
 
-_SELECT_CHECKS = """
-SELECT watcher_name, timestamp, ok, duration_seconds, error
-FROM checks
-ORDER BY id ASC
-"""
+_SELECT_CHECKS = dedent("""
+    SELECT watcher_name, timestamp, ok, duration_seconds, error
+    FROM checks
+    ORDER BY id ASC
+    """)
 
-_SELECT_CHECKS_FOR_WATCHER = """
-SELECT watcher_name, timestamp, ok, duration_seconds, error
-FROM checks
-WHERE watcher_name = ?
-ORDER BY id ASC
-"""
+_SELECT_CHECKS_FOR_WATCHER = dedent("""
+    SELECT watcher_name, timestamp, ok, duration_seconds, error
+    FROM checks
+    WHERE watcher_name = ?
+    ORDER BY id ASC
+    """)
 
 
 @dataclass(frozen=True)

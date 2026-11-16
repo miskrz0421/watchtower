@@ -6,6 +6,7 @@ from datetime import timedelta
 from pathlib import Path
 
 import pytest
+from dedent import dedent
 
 from watchtower import Change, ChangeKind, ConfigError, Item
 from watchtower.config import Config, load_config
@@ -83,24 +84,24 @@ def test_yaml_watcher_equals_python_builder_watcher(tmp_path: Path) -> None:
     """Test that a watcher built from YAML equals the same watcher built with WatcherBuilder."""
     yaml_file = _write_config(
         tmp_path,
-        """
-database: app.db
-watchers:
-  - name: Flat alerts
-    source:
-      type: fake
-      contents: ["line 1", "line 2"]
-    diff:
-      type: text
-    interval: 15m
-    filters:
-      - new_items
-      - price_below: 2500
-      - not:
-          text_contains: agency
-    notify:
-      - type: console
-""",
+        dedent("""
+            database: app.db
+            watchers:
+              - name: Flat alerts
+                source:
+                  type: fake
+                  contents: ["line 1", "line 2"]
+                diff:
+                  type: text
+                interval: 15m
+                filters:
+                  - new_items
+                  - price_below: 2500
+                  - not:
+                      text_contains: agency
+                notify:
+                  - type: console
+            """),
     )
 
     config = load_config(yaml_file)
@@ -146,37 +147,37 @@ def test_relative_and_absolute_database_path(tmp_path: Path) -> None:
     """Test database path resolution for both relative and absolute paths."""
     rel_file = _write_config(
         tmp_path,
-        """
-database: state.db
-watchers:
-  - name: W
-    source: { type: fake }
-    diff: { type: text }
-""",
+        dedent("""
+            database: state.db
+            watchers:
+              - name: W
+                source: { type: fake }
+                diff: { type: text }
+            """),
     )
     assert load_config(rel_file).database == tmp_path / "state.db"
 
     abs_db = tmp_path / "custom" / "abs.db"
     abs_file = _write_config(
         tmp_path / "nested_dir",
-        f"""
-database: "{abs_db.as_posix()}"
-watchers:
-  - name: W
-    source: {{ type: fake }}
-    diff: {{ type: text }}
-""",
+        dedent(f"""
+            database: "{abs_db.as_posix()}"
+            watchers:
+              - name: W
+                source: {{ type: fake }}
+                diff: {{ type: text }}
+            """),
     )
     assert load_config(abs_file).database == abs_db
 
     no_db_file = _write_config(
         tmp_path / "other_dir",
-        """
-watchers:
-  - name: W
-    source: { type: fake }
-    diff: { type: text }
-""",
+        dedent("""
+            watchers:
+              - name: W
+                source: { type: fake }
+                diff: { type: text }
+            """),
     )
     assert load_config(no_db_file).database is None
 
@@ -211,205 +212,247 @@ def test_read_yaml_os_error_raises_config_error(
         ("watchers: not_a_list", "key 'watchers' must be a list"),
         ("watchers: ['just a string']", "Watcher entry must be a mapping"),
         (
-            "watchers:\n  - source: { type: fake }\n    diff: { type: text }",
+            dedent("""
+                watchers:
+                  - source: { type: fake }
+                    diff: { type: text }
+                """),
             "missing required key 'name'",
         ),
         ("watchers:\n  - name: 123\n", "Watcher key 'name' must be a non-empty string"),
         ("watchers:\n  - name: '   '\n", "Watcher key 'name' must be a non-empty string"),
         (
-            (
-                "watchers:\n"
-                "  - name: Dup\n"
-                "    source: { type: fake }\n"
-                "    diff: { type: text }\n"
-                "  - name: Dup\n"
-                "    source: { type: fake }\n"
-                "    diff: { type: text }\n"
-            ),
+            dedent("""
+                watchers:
+                  - name: Dup
+                    source: { type: fake }
+                    diff: { type: text }
+                  - name: Dup
+                    source: { type: fake }
+                    diff: { type: text }
+                """),
             "Watcher 'Dup' key 'name': duplicate watcher name",
         ),
         (
-            (
-                "watchers:\n"
-                "  - name: W\n"
-                "    source: { type: fake }\n"
-                "    diff: { type: text }\n"
-                "    typo_interval: 15m\n"
-            ),
+            dedent("""
+                watchers:
+                  - name: W
+                    source: { type: fake }
+                    diff: { type: text }
+                    typo_interval: 15m
+                """),
             "Watcher 'W' has unknown key 'typo_interval'",
         ),
         (
-            "watchers:\n  - name: W\n    diff: { type: text }",
+            dedent("""
+                watchers:
+                  - name: W
+                    diff: { type: text }
+                """),
             "Watcher 'W' missing required key 'source'",
         ),
         (
-            "watchers:\n  - name: W\n    source: 'not a dict'\n    diff: { type: text }",
+            dedent("""
+                watchers:
+                  - name: W
+                    source: 'not a dict'
+                    diff: { type: text }
+                """),
             "Watcher 'W' key 'source': must be a mapping",
         ),
         (
-            "watchers:\n  - name: W\n    source: { url: 'http://x.com' }\n    diff: { type: text }",
+            dedent("""
+                watchers:
+                  - name: W
+                    source: { url: 'http://x.com' }
+                    diff: { type: text }
+                """),
             "Watcher 'W' key 'source': missing required key 'type'",
         ),
         (
-            "watchers:\n  - name: W\n    source: { type: 123 }\n    diff: { type: text }",
+            dedent("""
+                watchers:
+                  - name: W
+                    source: { type: 123 }
+                    diff: { type: text }
+                """),
             "Watcher 'W' key 'source': 'type' must be a string",
         ),
         (
-            (
-                "watchers:\n"
-                "  - name: W\n"
-                "    source: { type: nonexistent_source }\n"
-                "    diff: { type: text }"
-            ),
+            dedent("""
+                watchers:
+                  - name: W
+                    source: { type: nonexistent_source }
+                    diff: { type: text }
+                """),
             "Watcher 'W' key 'source': unknown source plugin 'nonexistent_source'",
         ),
         (
-            (
-                "watchers:\n"
-                "  - name: W\n"
-                "    source: { type: fake, invalid_kwarg: 123 }\n"
-                "    diff: { type: text }"
-            ),
+            dedent("""
+                watchers:
+                  - name: W
+                    source: { type: fake, invalid_kwarg: 123 }
+                    diff: { type: text }
+                """),
             "Watcher 'W' key 'source'",
         ),
         (
-            "watchers:\n  - name: W\n    source: { type: fake }",
+            dedent("""
+                watchers:
+                  - name: W
+                    source: { type: fake }
+                """),
             "Watcher 'W' missing required key 'diff'",
         ),
         (
-            "watchers:\n  - name: W\n    source: { type: fake }\n    diff: 'not a dict'",
+            dedent("""
+                watchers:
+                  - name: W
+                    source: { type: fake }
+                    diff: 'not a dict'
+                """),
             "Watcher 'W' key 'diff': must be a mapping",
         ),
         (
-            "watchers:\n  - name: W\n    source: { type: fake }\n    diff: { option: 1 }",
+            dedent("""
+                watchers:
+                  - name: W
+                    source: { type: fake }
+                    diff: { option: 1 }
+                """),
             "Watcher 'W' key 'diff': missing required key 'type'",
         ),
         (
-            "watchers:\n  - name: W\n    source: { type: fake }\n    diff: { type: 123 }",
+            dedent("""
+                watchers:
+                  - name: W
+                    source: { type: fake }
+                    diff: { type: 123 }
+                """),
             "Watcher 'W' key 'diff': 'type' must be a string",
         ),
         (
-            (
-                "watchers:\n"
-                "  - name: W\n"
-                "    source: { type: fake }\n"
-                "    diff: { type: nonexistent_differ }"
-            ),
+            dedent("""
+                watchers:
+                  - name: W
+                    source: { type: fake }
+                    diff: { type: nonexistent_differ }
+                """),
             "Watcher 'W' key 'diff': unknown differ plugin 'nonexistent_differ'",
         ),
         (
-            (
-                "watchers:\n"
-                "  - name: W\n"
-                "    source: { type: fake }\n"
-                "    diff: { type: text, invalid_param: 123 }"
-            ),
+            dedent("""
+                watchers:
+                  - name: W
+                    source: { type: fake }
+                    diff: { type: text, invalid_param: 123 }
+                """),
             "Watcher 'W' key 'diff'",
         ),
         (
-            (
-                "watchers:\n"
-                "  - name: W\n"
-                "    source: { type: fake }\n"
-                "    diff: { type: text }\n"
-                "    interval: -5m"
-            ),
+            dedent("""
+                watchers:
+                  - name: W
+                    source: { type: fake }
+                    diff: { type: text }
+                    interval: -5m
+                """),
             "Watcher 'W' key 'interval'",
         ),
         (
-            (
-                "watchers:\n"
-                "  - name: W\n"
-                "    source: { type: fake }\n"
-                "    diff: { type: text }\n"
-                "    interval: 30"
-            ),
+            dedent("""
+                watchers:
+                  - name: W
+                    source: { type: fake }
+                    diff: { type: text }
+                    interval: 30
+                """),
             "Watcher 'W' key 'interval': Interval must be text",
         ),
         (
-            (
-                "watchers:\n"
-                "  - name: W\n"
-                "    source: { type: fake }\n"
-                "    diff: { type: text }\n"
-                "    filters: 'not a list'"
-            ),
+            dedent("""
+                watchers:
+                  - name: W
+                    source: { type: fake }
+                    diff: { type: text }
+                    filters: 'not a list'
+                """),
             "Watcher 'W' key 'filters': must be a list",
         ),
         (
-            (
-                "watchers:\n"
-                "  - name: W\n"
-                "    source: { type: fake }\n"
-                "    diff: { type: text }\n"
-                "    filters:\n"
-                "      - unknown_filter_name"
-            ),
+            dedent("""
+                watchers:
+                  - name: W
+                    source: { type: fake }
+                    diff: { type: text }
+                    filters:
+                      - unknown_filter_name
+                """),
             "Watcher 'W' key 'filters': unknown filter 'unknown_filter_name'",
         ),
         (
-            (
-                "watchers:\n"
-                "  - name: W\n"
-                "    source: { type: fake }\n"
-                "    diff: { type: text }\n"
-                "    notify: 'not a list'"
-            ),
+            dedent("""
+                watchers:
+                  - name: W
+                    source: { type: fake }
+                    diff: { type: text }
+                    notify: 'not a list'
+                """),
             "Watcher 'W' key 'notify': must be a list",
         ),
         (
-            (
-                "watchers:\n"
-                "  - name: W\n"
-                "    source: { type: fake }\n"
-                "    diff: { type: text }\n"
-                "    notify:\n"
-                "      - 'just text'"
-            ),
+            dedent("""
+                watchers:
+                  - name: W
+                    source: { type: fake }
+                    diff: { type: text }
+                    notify:
+                      - 'just text'
+                """),
             "Watcher 'W' key 'notify': must be a mapping",
         ),
         (
-            (
-                "watchers:\n"
-                "  - name: W\n"
-                "    source: { type: fake }\n"
-                "    diff: { type: text }\n"
-                "    notify:\n"
-                "      - { option: 1 }"
-            ),
+            dedent("""
+                watchers:
+                  - name: W
+                    source: { type: fake }
+                    diff: { type: text }
+                    notify:
+                      - { option: 1 }
+                """),
             "Watcher 'W' key 'notify': missing required key 'type'",
         ),
         (
-            (
-                "watchers:\n"
-                "  - name: W\n"
-                "    source: { type: fake }\n"
-                "    diff: { type: text }\n"
-                "    notify:\n"
-                "      - { type: 123 }"
-            ),
+            dedent("""
+                watchers:
+                  - name: W
+                    source: { type: fake }
+                    diff: { type: text }
+                    notify:
+                      - { type: 123 }
+                """),
             "Watcher 'W' key 'notify': 'type' must be a string",
         ),
         (
-            (
-                "watchers:\n"
-                "  - name: W\n"
-                "    source: { type: fake }\n"
-                "    diff: { type: text }\n"
-                "    notify:\n"
-                "      - { type: nonexistent_notifier }"
-            ),
+            dedent("""
+                watchers:
+                  - name: W
+                    source: { type: fake }
+                    diff: { type: text }
+                    notify:
+                      - { type: nonexistent_notifier }
+                """),
             "Watcher 'W' key 'notify': unknown notifier plugin 'nonexistent_notifier'",
         ),
         (
-            (
-                "watchers:\n"
-                "  - name: W\n"
-                "    source: { type: fake }\n"
-                "    diff: { type: text }\n"
-                "    notify:\n"
-                "      - { type: console, invalid_kw: 1 }"
-            ),
+            dedent("""
+                watchers:
+                  - name: W
+                    source: { type: fake }
+                    diff: { type: text }
+                    notify:
+                      - { type: console, invalid_kw: 1 }
+                """),
             "Watcher 'W' key 'notify'",
         ),
         (

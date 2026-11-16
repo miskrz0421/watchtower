@@ -8,22 +8,24 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
+from dedent import dedent
+
 from watchtower._errors import StorageError
 from watchtower._models import Snapshot
 
-_CREATE_TABLE = """
-CREATE TABLE IF NOT EXISTS snapshots (
-    watcher_name TEXT PRIMARY KEY,
-    data TEXT NOT NULL
-)
-"""
+_CREATE_TABLE = dedent("""
+    CREATE TABLE IF NOT EXISTS snapshots (
+        watcher_name TEXT PRIMARY KEY,
+        data TEXT NOT NULL
+    )
+    """)
 
 _SELECT = "SELECT data FROM snapshots WHERE watcher_name = ?"
 
-_UPSERT = """
-INSERT INTO snapshots (watcher_name, data) VALUES (?, ?)
-ON CONFLICT (watcher_name) DO UPDATE SET data = excluded.data
-"""
+_UPSERT = dedent("""
+    INSERT INTO snapshots (watcher_name, data) VALUES (?, ?)
+    ON CONFLICT (watcher_name) DO UPDATE SET data = excluded.data
+    """)
 
 
 class SnapshotStore:

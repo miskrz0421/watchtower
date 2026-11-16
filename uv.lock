@@ -310,6 +310,15 @@ wheels = [
 ]
 
 [[package]]
+name = "dedent"
+version = "1.0.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/e0/3e/ba81f4d1631e429d08261510e38200a748eb330b6ab46725c2fa60ddaae4/dedent-1.0.0.tar.gz", hash = "sha256:25d9bc20abe93c72fb32ff56a69927a74aa544644a0159e0f2faa45f7732b0c1", size = 41098, upload-time = "2026-08-18T18:44:04.314Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ce/ba/c30620d730755adb7875e5b2d048ad817c119c35a7079b09b6ad6acc3905/dedent-1.0.0-py3-none-any.whl", hash = "sha256:a684fc0ef30054bc0991d8de765881f65893457f45e3eb23ea8d19d30556ea8a", size = 10689, upload-time = "2026-08-18T18:44:02.971Z" },
+]
+
+[[package]]
 name = "feedparser"
 version = "6.0.14"
 source = { registry = "https://pypi.org/simple" }
@@ -1301,6 +1310,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "beautifulsoup4" },
+    { name = "dedent" },
     { name = "feedparser" },
     { name = "httpx" },
     { name = "pyyaml" },
@@ -1329,6 +1339,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "beautifulsoup4", specifier = ">=4.12" },
+    { name = "dedent", specifier = ">=1.0.0" },
     { name = "feedparser", specifier = ">=6.0" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "matplotlib", marker = "extra == 'reports'", specifier = ">=3.9" },
