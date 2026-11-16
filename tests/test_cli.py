@@ -30,7 +30,7 @@ def _file_config(folder: Path, watched: Path, database: str | None = "watchtower
         + f"""
 watchers:
   - name: Notes
-    source: {{ type: file, path: "{watched}" }}
+    source: {{ type: file, path: "{watched.as_posix()}" }}
     diff: {{ type: text }}
     notify: [{{ type: console }}]
 """,
@@ -137,10 +137,10 @@ def test_check_goes_on_after_a_failing_watcher(
         f"""
 watchers:
   - name: Missing
-    source: {{ type: file, path: "{tmp_path / "missing.txt"}" }}
+    source: {{ type: file, path: "{(tmp_path / "missing.txt").as_posix()}" }}
     diff: {{ type: text }}
   - name: Notes
-    source: {{ type: file, path: "{watched}" }}
+    source: {{ type: file, path: "{watched.as_posix()}" }}
     diff: {{ type: text }}
 """,
     )

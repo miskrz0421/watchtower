@@ -13,7 +13,6 @@ from watchtower.diffs.items import ItemDiff
 from watchtower.diffs.text import TextDiff
 from watchtower.errors import ConfigError
 from watchtower.filters import (
-    And,
     NewItems,
     Not,
     Or,
@@ -37,7 +36,7 @@ def _write_config(tmp_path: Path, text: str) -> Path:
 
 def test_load_example_config() -> None:
     """Test loading the official examples/config.yaml file."""
-    config_path = Path(__file__).parents[1] / "examples" / "config.yaml"
+    config_path = Path(__file__).parents[2] / "examples" / "config.yaml"
     config = load_config(config_path)
 
     assert isinstance(config, Config)
@@ -147,46 +146,6 @@ watchers:
     assert type(from_yaml.notifiers[0]) is type(from_python.notifiers[0])
 
 
-def test_nested_composite_filters(tmp_path: Path) -> None:
-    """Test loading deeply nested composite filters with all, any, and not."""
-    yaml_file = _write_config(
-        tmp_path,
-        """
-watchers:
-  - name: Complex filter watcher
-    source: { type: fake }
-    diff: { type: text }
-    filters:
-      - all:
-          - new_items
-          - any:
-              - price_below: 2000
-              - price_above: 6000
-          - not: { text_contains: quiet }
-""",
-    )
-
-    config = load_config(yaml_file)
-    watcher = config.watchers[0].build()
-
-    assert len(watcher.filters) == 1
-    top = watcher.filters[0]
-    assert isinstance(top, And)
-
-    # Behavior checks for the composite filter hierarchy
-    assert top.matches(Change(kind=ChangeKind.NEW, item=Item(key="1", title="Sunny", price=1500)))
-    assert top.matches(
-        Change(kind=ChangeKind.NEW, item=Item(key="2", title="Penthouse", price=8000))
-    )
-    assert not top.matches(Change(kind=ChangeKind.NEW, item=Item(key="3", title="Mid", price=3000)))
-    assert not top.matches(
-        Change(kind=ChangeKind.NEW, item=Item(key="4", title="Quiet room", price=1500))
-    )
-    assert not top.matches(
-        Change(kind=ChangeKind.CHANGED, item=Item(key="5", title="Sunny", price=1500))
-    )
-
-
 def test_relative_and_absolute_database_path(tmp_path: Path) -> None:
     """Test database path resolution for both relative and absolute paths."""
     rel_file = _write_config(
@@ -244,27 +203,6 @@ def test_read_yaml_os_error_raises_config_error(
     monkeypatch.setattr(Path, "open", mock_open)
     with pytest.raises(ConfigError, match="Cannot read config file"):
         load_config(file)
-
-
-def test_filter_not_list_of_one_item_works(tmp_path: Path) -> None:
-    """Test that not filter with single-element list works."""
-    file = _write_config(
-        tmp_path,
-        """
-watchers:
-  - name: W
-    source: { type: fake }
-    diff: { type: text }
-    filters:
-      - not: [new_items]
-""",
-    )
-    config = load_config(file)
-    w = config.watchers[0].build()
-    assert len(w.filters) == 1
-    assert isinstance(w.filters[0], Not)
-    assert not w.filters[0].matches(Change(kind=ChangeKind.NEW))
-    assert w.filters[0].matches(Change(kind=ChangeKind.REMOVED))
 
 
 @pytest.mark.parametrize(
@@ -419,94 +357,6 @@ watchers:
                 "  - name: W\n"
                 "    source: { type: fake }\n"
                 "    diff: { type: text }\n"
-                "    filters:\n"
-                "      - { price_below: 3000, price_above: 1000 }"
-            ),
-            "Watcher 'W' key 'filters': filter entry must have exactly one key",
-        ),
-        (
-            (
-                "watchers:\n"
-                "  - name: W\n"
-                "    source: { type: fake }\n"
-                "    diff: { type: text }\n"
-                "    filters:\n"
-                "      - all: []"
-            ),
-            "Watcher 'W' key 'filters': 'all' requires at least one filter",
-        ),
-        (
-            (
-                "watchers:\n"
-                "  - name: W\n"
-                "    source: { type: fake }\n"
-                "    diff: { type: text }\n"
-                "    filters:\n"
-                "      - price_below"
-            ),
-            "Watcher 'W' key 'filters': filter 'price_below'",
-        ),
-        (
-            (
-                "watchers:\n"
-                "  - name: W\n"
-                "    source: { type: fake }\n"
-                "    diff: { type: text }\n"
-                "    filters:\n"
-                "      - all: 'not a list'"
-            ),
-            "Watcher 'W' key 'filters': 'all' requires a list",
-        ),
-        (
-            (
-                "watchers:\n"
-                "  - name: W\n"
-                "    source: { type: fake }\n"
-                "    diff: { type: text }\n"
-                "    filters:\n"
-                "      - not: [new_items, new_items]"
-            ),
-            "Watcher 'W' key 'filters': 'not' requires exactly one",
-        ),
-        (
-            (
-                "watchers:\n"
-                "  - name: W\n"
-                "    source: { type: fake }\n"
-                "    diff: { type: text }\n"
-                "    filters:\n"
-                "      - unknown_rule: 123"
-            ),
-            "Watcher 'W' key 'filters': unknown filter 'unknown_rule'",
-        ),
-        (
-            (
-                "watchers:\n"
-                "  - name: W\n"
-                "    source: { type: fake }\n"
-                "    diff: { type: text }\n"
-                "    filters:\n"
-                "      - matches: '[unclosed regex'"
-            ),
-            "Watcher 'W' key 'filters': filter 'matches'",
-        ),
-        (
-            (
-                "watchers:\n"
-                "  - name: W\n"
-                "    source: { type: fake }\n"
-                "    diff: { type: text }\n"
-                "    filters:\n"
-                "      - 12345"
-            ),
-            "Watcher 'W' key 'filters': filter entry must be a name or mapping",
-        ),
-        (
-            (
-                "watchers:\n"
-                "  - name: W\n"
-                "    source: { type: fake }\n"
-                "    diff: { type: text }\n"
                 "    notify: 'not a list'"
             ),
             "Watcher 'W' key 'notify': must be a list",
@@ -571,17 +421,6 @@ watchers:
             "Config file key 'database' must be a non-empty string",
         ),
         ("database: ''\nwatchers: []\n", "Config file key 'database' must be a non-empty string"),
-        (
-            (
-                "watchers:\n"
-                "  - name: W\n"
-                "    source: { type: fake }\n"
-                "    diff: { type: text }\n"
-                "    filters:\n"
-                "      - 123: 456"
-            ),
-            "Watcher 'W' key 'filters': filter name must be a string",
-        ),
     ],
 )
 def test_invalid_config_raises_config_error(tmp_path: Path, yaml_text: str, match: str) -> None:

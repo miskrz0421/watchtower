@@ -47,7 +47,7 @@ src/watchtower/
 
 What is public and what is private is decided in [ADR-015](decisions.md).
 
-tests/               one test module per area (test_sources.py, test_diffs.py, ...)
+tests/               mirrors the package layout (core/, sources/, diffs/, ...)
 examples/            fake_listings server, example config.yaml
 docs/                this documentation
 ```

@@ -21,7 +21,7 @@ from watchtower.sources.parsing import parse_price
 from watchtower.sources.rss import RSSSource
 from watchtower.sources.webpage import WebPageSource
 
-FIXTURES = Path(__file__).parent / "fixtures"
+FIXTURES = Path(__file__).parents[1] / "fixtures"
 
 
 class DummyWorkingSource(Source):
