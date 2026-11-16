@@ -5,9 +5,9 @@ from __future__ import annotations
 import logging
 from datetime import datetime
 
-from watchtower.core.clock import Clock, SystemClock
-from watchtower.core.watcher import Watcher
-from watchtower.errors import WatchtowerError
+from watchtower._errors import WatchtowerError
+from watchtower.core._clock import Clock, SystemClock
+from watchtower.core._watcher import Watcher
 
 _logger = logging.getLogger(__name__)
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import httpx
 
-from watchtower.sources.base import Source
+from watchtower.sources._base import Source
 
 DEFAULT_TIMEOUT_SECONDS = 10.0
 USER_AGENT = "Watchtower/0.1"

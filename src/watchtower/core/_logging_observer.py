@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 
-from watchtower.events import ChangeDetected, CheckCompleted, EventBus
+from watchtower._events import ChangeDetected, CheckCompleted, EventBus
 
 _logger = logging.getLogger(__name__)
 

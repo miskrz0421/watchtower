@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import re
 
-from watchtower.filters.base import Filter
-from watchtower.models import Change, ChangeKind
-from watchtower.registry import register_filter
+from watchtower._models import Change, ChangeKind
+from watchtower._registry import register_filter
+from watchtower.filters._base import Filter
 
 
 @register_filter("new_items")

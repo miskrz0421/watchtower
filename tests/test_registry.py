@@ -4,10 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from watchtower.diffs.items import ItemDiff
-from watchtower.diffs.text import TextDiff
-from watchtower.notifiers.console import ConsoleNotifier
-from watchtower.registry import (
+from watchtower import (
     create,
     create_differ,
     create_notifier,
@@ -18,9 +15,9 @@ from watchtower.registry import (
     register_notifier,
     register_source,
 )
-from watchtower.sources.fake import FakeSource
-from watchtower.sources.rss import RSSSource
-from watchtower.sources.webpage import WebPageSource
+from watchtower.diffs import ItemDiff, TextDiff
+from watchtower.notifiers import ConsoleNotifier
+from watchtower.sources import FakeSource, RSSSource, WebPageSource
 
 
 def test_m2_plugins_are_registered() -> None:

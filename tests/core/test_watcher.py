@@ -7,18 +7,23 @@ from pathlib import Path
 
 import pytest
 
-from watchtower.core.watcher import DEFAULT_INTERVAL, Watcher
-from watchtower.diffs.items import ItemDiff
-from watchtower.diffs.text import TextDiff
-from watchtower.errors import SourceError
-from watchtower.events import ChangeDetected, CheckCompleted, EventBus, FetchFailed
-from watchtower.filters.base import Filter
-from watchtower.models import Change, ChangeEvent, Item, Snapshot
-from watchtower.notifiers.base import Notifier
-from watchtower.notifiers.console import ConsoleNotifier
-from watchtower.sources.base import Source
-from watchtower.sources.fake import FakeSource
-from watchtower.storage.snapshots import SnapshotStore
+from watchtower import (
+    Change,
+    ChangeDetected,
+    ChangeEvent,
+    CheckCompleted,
+    EventBus,
+    FetchFailed,
+    Item,
+    Snapshot,
+    SourceError,
+)
+from watchtower.core import DEFAULT_INTERVAL, Watcher
+from watchtower.diffs import ItemDiff, TextDiff
+from watchtower.filters import Filter
+from watchtower.notifiers import ConsoleNotifier, Notifier
+from watchtower.sources import FakeSource, Source
+from watchtower.storage import SnapshotStore
 
 
 class FailingSource(Source):

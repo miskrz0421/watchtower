@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
 
-from watchtower.models import Item, Snapshot
-from watchtower.registry import register_source
-from watchtower.sources.base import Source
+from watchtower._models import Item, Snapshot
+from watchtower._registry import register_source
+from watchtower.sources._base import Source
 
 
 @register_source("fake")

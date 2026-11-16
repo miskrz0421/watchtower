@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from watchtower.events import ChangeDetected, CheckCompleted, EventBus
-from watchtower.storage.history import HistoryStore
+from watchtower._events import ChangeDetected, CheckCompleted, EventBus
+from watchtower.storage._history import HistoryStore
 
 
 class HistoryRecorder:

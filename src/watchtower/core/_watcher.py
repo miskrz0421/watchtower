@@ -7,13 +7,13 @@ import time
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 
-from watchtower.diffs.base import Differ
-from watchtower.events import ChangeDetected, CheckCompleted, Event, EventBus, FetchFailed
-from watchtower.filters.base import Filter
-from watchtower.models import Change, ChangeEvent, Snapshot
-from watchtower.notifiers.base import Notifier
-from watchtower.sources.base import Source
-from watchtower.storage.snapshots import SnapshotStore
+from watchtower._events import ChangeDetected, CheckCompleted, Event, EventBus, FetchFailed
+from watchtower._models import Change, ChangeEvent, Snapshot
+from watchtower.diffs._base import Differ
+from watchtower.filters._base import Filter
+from watchtower.notifiers._base import Notifier
+from watchtower.sources._base import Source
+from watchtower.storage._snapshots import SnapshotStore
 
 DEFAULT_INTERVAL = timedelta(minutes=15)
 

@@ -7,16 +7,13 @@ from pathlib import Path
 
 import pytest
 
-from watchtower.core.builder import WatcherBuilder
-from watchtower.core.watcher import DEFAULT_INTERVAL
-from watchtower.diffs.text import TextDiff
-from watchtower.errors import ConfigError
-from watchtower.events import EventBus
-from watchtower.filters.base import Filter
-from watchtower.models import Change, ChangeEvent
-from watchtower.notifiers.base import Notifier
-from watchtower.sources.fake import FakeSource
-from watchtower.storage.snapshots import SnapshotStore
+from watchtower import Change, ChangeEvent, ConfigError, EventBus
+from watchtower.core import DEFAULT_INTERVAL, WatcherBuilder
+from watchtower.diffs import TextDiff
+from watchtower.filters import Filter
+from watchtower.notifiers import Notifier
+from watchtower.sources import FakeSource
+from watchtower.storage import SnapshotStore
 
 
 class _AcceptAll(Filter):

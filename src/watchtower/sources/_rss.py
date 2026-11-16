@@ -8,11 +8,11 @@ from typing import Protocol, cast
 
 import feedparser
 
-from watchtower.errors import ParseError
-from watchtower.models import Item
-from watchtower.registry import register_source
-from watchtower.sources.http import HttpSource
-from watchtower.sources.parsing import non_empty_string, parse_price
+from watchtower._errors import ParseError
+from watchtower._models import Item
+from watchtower._registry import register_source
+from watchtower.sources._http import HttpSource
+from watchtower.sources._parsing import non_empty_string, parse_price
 
 
 class _Feed(Protocol):

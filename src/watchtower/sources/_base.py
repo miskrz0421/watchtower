@@ -7,8 +7,8 @@ from collections.abc import Iterable
 from datetime import UTC, datetime
 from typing import final
 
-from watchtower.errors import ParseError, SourceError
-from watchtower.models import Item, Snapshot
+from watchtower._errors import ParseError, SourceError
+from watchtower._models import Item, Snapshot
 
 
 class Source(ABC):

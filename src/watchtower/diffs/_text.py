@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import difflib
 
-from watchtower.diffs.base import Differ
-from watchtower.models import Change, ChangeKind, Snapshot
-from watchtower.registry import register_differ
+from watchtower._models import Change, ChangeKind, Snapshot
+from watchtower._registry import register_differ
+from watchtower.diffs._base import Differ
 
 
 @register_differ("text")

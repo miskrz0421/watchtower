@@ -10,8 +10,8 @@ import pytest
 
 from conftest import SAMPLE_LISTINGS, FakeListings
 from watchtower.cli import main
-from watchtower.core.scheduler import Scheduler
-from watchtower.storage.history import HistoryStore
+from watchtower.core import Scheduler
+from watchtower.storage import HistoryStore
 
 
 def _write_config(folder: Path, text: str) -> Path:

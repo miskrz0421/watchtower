@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from watchtower.errors import ConfigError
-from watchtower.filters.base import Filter
-from watchtower.registry import create_filter, list_plugins
+from watchtower._errors import ConfigError
+from watchtower._registry import create_filter, list_plugins
+from watchtower.filters._base import Filter
 
 
 def _create_filter(watcher_name: str, name: str, *args: object) -> Filter:

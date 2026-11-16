@@ -7,9 +7,9 @@ from collections.abc import Iterable
 import httpx
 import pytest
 
-from watchtower.errors import SourceError
-from watchtower.models import Item
-from watchtower.sources.http import USER_AGENT, HttpSource
+from watchtower import Item, SourceError
+from watchtower.sources import HttpSource
+from watchtower.sources._http import USER_AGENT
 
 
 class PlainHttpSource(HttpSource):

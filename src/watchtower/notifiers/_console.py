@@ -6,9 +6,9 @@ import sys
 from datetime import tzinfo
 from typing import TextIO
 
-from watchtower.models import Change, ChangeEvent, ChangeKind, Item
-from watchtower.notifiers.base import Notifier
-from watchtower.registry import register_notifier
+from watchtower._models import Change, ChangeEvent, ChangeKind, Item
+from watchtower._registry import register_notifier
+from watchtower.notifiers._base import Notifier
 
 
 @register_notifier("console")

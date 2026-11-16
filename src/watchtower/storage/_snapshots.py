@@ -8,8 +8,8 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
-from watchtower.errors import StorageError
-from watchtower.models import Snapshot
+from watchtower._errors import StorageError
+from watchtower._models import Snapshot
 
 _CREATE_TABLE = """
 CREATE TABLE IF NOT EXISTS snapshots (

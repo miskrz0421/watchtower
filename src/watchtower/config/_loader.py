@@ -9,16 +9,16 @@ from typing import Any
 
 import yaml
 
-from watchtower.config.filters import build_filter
-from watchtower.config.intervals import parse_interval
-from watchtower.core.builder import WatcherBuilder
-from watchtower.errors import ConfigError
-from watchtower.registry import (
+from watchtower._errors import ConfigError
+from watchtower._registry import (
     create_differ,
     create_notifier,
     create_source,
     list_plugins,
 )
+from watchtower.config._filters import build_filter
+from watchtower.config._intervals import parse_interval
+from watchtower.core._builder import WatcherBuilder
 
 _ALLOWED_TOP_LEVEL_KEYS = {"database", "watchers"}
 _ALLOWED_WATCHER_KEYS = {"name", "source", "diff", "interval", "filters", "notify"}

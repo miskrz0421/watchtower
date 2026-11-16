@@ -7,16 +7,10 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from watchtower.core.clock import FakeClock
-from watchtower.core.scheduler import Scheduler
-from watchtower.core.watcher import Watcher
-from watchtower.diffs.base import Differ
-from watchtower.diffs.text import TextDiff
-from watchtower.errors import SourceError
-from watchtower.events import CheckCompleted, EventBus
-from watchtower.models import Change, Snapshot
-from watchtower.sources.base import Source
-from watchtower.sources.fake import FakeSource
+from watchtower import Change, CheckCompleted, EventBus, Snapshot, SourceError
+from watchtower.core import FakeClock, Scheduler, Watcher
+from watchtower.diffs import Differ, TextDiff
+from watchtower.sources import FakeSource, Source
 
 _START = datetime(2026, 11, 16, 12, 0, tzinfo=UTC)
 

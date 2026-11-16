@@ -1,7 +1,7 @@
 """Filters deciding which detected changes matter."""
 
-from watchtower.filters.base import And, Filter, Not, Or
-from watchtower.filters.builtin import (
+from watchtower.filters._base import And, Filter, Not, Or
+from watchtower.filters._builtin import (
     KindIs,
     Matches,
     NewItems,

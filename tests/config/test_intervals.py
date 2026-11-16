@@ -6,8 +6,8 @@ from datetime import timedelta
 
 import pytest
 
-from watchtower.config.intervals import parse_interval
-from watchtower.errors import ConfigError
+from watchtower import ConfigError
+from watchtower.config import parse_interval
 
 
 @pytest.mark.parametrize(

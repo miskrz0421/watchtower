@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from datetime import timedelta
 
-from watchtower.errors import ConfigError
+from watchtower._errors import ConfigError
 
 _INTERVAL_PATTERN = re.compile(r"(\d+)([smhd])")
 _UNIT_MAP = {

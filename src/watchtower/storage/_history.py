@@ -10,9 +10,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import TypedDict
 
-from watchtower.errors import StorageError
-from watchtower.events import CheckCompleted
-from watchtower.models import Change, ChangeEvent, ChangeKind
+from watchtower._errors import StorageError
+from watchtower._events import CheckCompleted
+from watchtower._models import Change, ChangeEvent, ChangeKind
 
 _CREATE_CHANGES_TABLE = """
 CREATE TABLE IF NOT EXISTS changes (

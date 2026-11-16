@@ -8,9 +8,8 @@ from pathlib import Path
 
 import pytest
 
-from watchtower.errors import StorageError
-from watchtower.models import Item, Snapshot
-from watchtower.storage.snapshots import SnapshotStore
+from watchtower import Item, Snapshot, StorageError
+from watchtower.storage import SnapshotStore
 
 
 def make_snapshot(*titles: str, raw_text: str = "page") -> Snapshot:

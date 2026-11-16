@@ -7,11 +7,10 @@ from pathlib import Path
 
 import pytest
 
-from watchtower.config.loader import Config, load_config
-from watchtower.core.builder import WatcherBuilder
-from watchtower.diffs.items import ItemDiff
-from watchtower.diffs.text import TextDiff
-from watchtower.errors import ConfigError
+from watchtower import Change, ChangeKind, ConfigError, Item
+from watchtower.config import Config, load_config
+from watchtower.core import WatcherBuilder
+from watchtower.diffs import ItemDiff, TextDiff
 from watchtower.filters import (
     NewItems,
     Not,
@@ -19,11 +18,8 @@ from watchtower.filters import (
     PriceBelow,
     TextContains,
 )
-from watchtower.models import Change, ChangeKind, Item
-from watchtower.notifiers.console import ConsoleNotifier
-from watchtower.sources.fake import FakeSource
-from watchtower.sources.rss import RSSSource
-from watchtower.sources.webpage import WebPageSource
+from watchtower.notifiers import ConsoleNotifier
+from watchtower.sources import FakeSource, RSSSource, WebPageSource
 
 
 def _write_config(tmp_path: Path, text: str) -> Path:

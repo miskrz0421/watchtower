@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from watchtower.models import ChangeEvent
+from watchtower._models import ChangeEvent
 
 
 class Notifier(ABC):

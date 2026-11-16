@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from watchtower.core.clock import FakeClock, SystemClock
+from watchtower.core import FakeClock, SystemClock
 
 _START = datetime(2026, 11, 16, 12, 0, tzinfo=UTC)
 

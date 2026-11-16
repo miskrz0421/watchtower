@@ -5,10 +5,10 @@ from __future__ import annotations
 from collections.abc import Iterable
 from pathlib import Path
 
-from watchtower.errors import SourceError
-from watchtower.models import Item
-from watchtower.registry import register_source
-from watchtower.sources.base import Source
+from watchtower._errors import SourceError
+from watchtower._models import Item
+from watchtower._registry import register_source
+from watchtower.sources._base import Source
 
 
 @register_source("file")

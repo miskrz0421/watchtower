@@ -7,9 +7,16 @@ from datetime import UTC, datetime
 
 import pytest
 
-from watchtower.core.logging_observer import LoggingObserver
-from watchtower.events import ChangeDetected, CheckCompleted, EventBus, FetchFailed
-from watchtower.models import Change, ChangeEvent, ChangeKind
+from watchtower import (
+    Change,
+    ChangeDetected,
+    ChangeEvent,
+    ChangeKind,
+    CheckCompleted,
+    EventBus,
+    FetchFailed,
+)
+from watchtower.core import LoggingObserver
 
 
 @pytest.fixture
@@ -28,7 +35,7 @@ def test_successful_check_is_logged_at_info(
         bus.publish(CheckCompleted(watcher_name="Flats", duration_seconds=0.25, ok=True))
 
     assert caplog.record_tuples == [
-        ("watchtower.core.logging_observer", logging.INFO, "Checked 'Flats' in 0.25 s: ok")
+        ("watchtower.core._logging_observer", logging.INFO, "Checked 'Flats' in 0.25 s: ok")
     ]
 
 
@@ -44,7 +51,7 @@ def test_failed_check_is_logged_at_warning(bus: EventBus, caplog: pytest.LogCapt
 
     assert caplog.record_tuples == [
         (
-            "watchtower.core.logging_observer",
+            "watchtower.core._logging_observer",
             logging.WARNING,
             "Checked 'Flats' in 0.50 s: failed: server down",
         )

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from watchtower import Change, ChangeKind, Item, create_filter, register_filter
 from watchtower.filters import (
     And,
     Filter,
@@ -15,8 +16,6 @@ from watchtower.filters import (
     PriceBelow,
     TextContains,
 )
-from watchtower.models import Change, ChangeKind, Item
-from watchtower.registry import create_filter, register_filter
 
 
 def test_filter_cannot_be_instantiated_directly() -> None:

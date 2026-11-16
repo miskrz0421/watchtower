@@ -4,10 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from watchtower.diffs.items import ItemDiff
-from watchtower.diffs.text import TextDiff
-from watchtower.models import Change, ChangeKind, Item, Snapshot
-from watchtower.registry import create_differ
+from watchtower import Change, ChangeKind, Item, Snapshot, create_differ
+from watchtower.diffs import ItemDiff, TextDiff
 
 
 def test_text_diff_first_run_returns_empty() -> None:

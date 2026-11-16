@@ -8,11 +8,11 @@ from urllib.parse import urljoin
 import httpx
 from bs4 import BeautifulSoup, Tag
 
-from watchtower.errors import ParseError
-from watchtower.models import Item
-from watchtower.registry import register_source
-from watchtower.sources.http import DEFAULT_TIMEOUT_SECONDS, HttpSource
-from watchtower.sources.parsing import parse_price
+from watchtower._errors import ParseError
+from watchtower._models import Item
+from watchtower._registry import register_source
+from watchtower.sources._http import DEFAULT_TIMEOUT_SECONDS, HttpSource
+from watchtower.sources._parsing import parse_price
 
 
 @register_source("webpage")

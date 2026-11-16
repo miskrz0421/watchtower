@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from watchtower.models import Change
-from watchtower.registry import register_filter
+from watchtower._models import Change
+from watchtower._registry import register_filter
 
 
 class Filter(ABC):

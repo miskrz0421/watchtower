@@ -12,11 +12,8 @@ from collections.abc import Callable
 import pytest
 
 from conftest import SAMPLE_LISTINGS, FakeListings
-from watchtower.errors import SourceError
-from watchtower.sources.http import HttpSource
-from watchtower.sources.json_api import JSONAPISource
-from watchtower.sources.rss import RSSSource
-from watchtower.sources.webpage import WebPageSource
+from watchtower import SourceError
+from watchtower.sources import HttpSource, JSONAPISource, RSSSource, WebPageSource
 
 NEW_LISTING = {"id": "3", "title": "Flat Krowodrza", "price": 2800, "description": "Fresh offer."}
 

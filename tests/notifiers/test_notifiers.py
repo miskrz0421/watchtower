@@ -7,9 +7,8 @@ from datetime import UTC, datetime, timedelta, timezone
 
 import pytest
 
-from watchtower.models import Change, ChangeEvent, ChangeKind, Item
-from watchtower.notifiers.console import ConsoleNotifier
-from watchtower.registry import create_notifier
+from watchtower import Change, ChangeEvent, ChangeKind, Item, create_notifier
+from watchtower.notifiers import ConsoleNotifier
 
 
 def test_console_notifier_outputs_text_diff() -> None:

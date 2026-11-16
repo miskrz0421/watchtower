@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from watchtower.models import Change, Snapshot
+from watchtower._models import Change, Snapshot
 
 
 class Differ(ABC):

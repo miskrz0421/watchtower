@@ -10,16 +10,16 @@ from pathlib import Path
 import httpx
 import pytest
 
-from watchtower.errors import ParseError, SourceError
-from watchtower.models import Item, Snapshot
-from watchtower.registry import create_source
-from watchtower.sources.base import Source
-from watchtower.sources.fake import FakeSource
-from watchtower.sources.file import FileSource
-from watchtower.sources.json_api import JSONAPISource
-from watchtower.sources.parsing import parse_price
-from watchtower.sources.rss import RSSSource
-from watchtower.sources.webpage import WebPageSource
+from watchtower import Item, ParseError, Snapshot, SourceError, create_source
+from watchtower.sources import (
+    FakeSource,
+    FileSource,
+    JSONAPISource,
+    RSSSource,
+    Source,
+    WebPageSource,
+    parse_price,
+)
 
 FIXTURES = Path(__file__).parents[1] / "fixtures"
 

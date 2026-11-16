@@ -10,7 +10,7 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any, TypeVar
 
-from watchtower.models import ChangeEvent
+from watchtower._models import ChangeEvent
 
 _logger = logging.getLogger(__name__)
 

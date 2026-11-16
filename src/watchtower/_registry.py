@@ -6,10 +6,10 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, TypeVar
 
 if TYPE_CHECKING:
-    from watchtower.diffs.base import Differ
-    from watchtower.filters.base import Filter
-    from watchtower.notifiers.base import Notifier
-    from watchtower.sources.base import Source
+    from watchtower.diffs._base import Differ
+    from watchtower.filters._base import Filter
+    from watchtower.notifiers._base import Notifier
+    from watchtower.sources._base import Source
 
 _T = TypeVar("_T")
 

@@ -28,18 +28,18 @@ Qt**: the GUI is just another subscriber on the event bus.
 ```
 src/watchtower/
 ├── __init__.py      public API: Watcher, models, events, plugin base classes, registry
-├── models.py        Item, Snapshot, Change, ChangeKind, ChangeEvent
-├── errors.py        WatchtowerError → SourceError, ParseError, NotifyError, StorageError, ConfigError
-├── registry.py      @register_* decorators, create(kind, name, **params)
-├── events.py        event dataclasses + EventBus
-├── cli.py           argparse: check / run / plugins / gui / report
-├── sources/         base (Template Method), fake, file, rss, webpage, json_api, http, parsing
-├── storage/         SnapshotStore (Memento), HistoryStore, HistoryRecorder
-├── diffs/           base (Strategy), text, items
-├── filters/         base (Specification + Composite: And/Or/Not), built-in filters
-├── notifiers/       base (Adapter), console, discord, desktop, decorators
-├── config/          YAML loader, interval parsing
-├── core/            watcher, builder (Builder), scheduler (Mediator), clock, logging observer,
+├── _models.py       Item, Snapshot, Change, ChangeKind, ChangeEvent (private)
+├── _errors.py       WatchtowerError → SourceError, ParseError, NotifyError, StorageError, ConfigError (private)
+├── _registry.py     @register_* decorators, create(kind, name, **params) (private)
+├── _events.py       event dataclasses + EventBus (private)
+├── cli.py           argparse CLI entry point: check / run / plugins / gui / report
+├── sources/         _base (Template Method), _fake, _file, _rss, _webpage, _json_api, _http, _parsing
+├── storage/         _snapshots (Memento), _history, _recorder
+├── diffs/           _base (Strategy), _text, _items
+├── filters/         _base (Specification + Composite: And/Or/Not), _builtin
+├── notifiers/       _base (Adapter), _console, _discord, _desktop, _decorators
+├── config/          _loader (YAML loader), _intervals (interval parsing), _filters (filter builder)
+├── core/            _watcher, _builder (Builder), _scheduler (Mediator), _clock, _logging_observer,
 │                    states (State), commands, retry
 ├── reports/         pandas analysis + matplotlib charts
 └── gui/             app, worker thread, EngineBridge, tray, main window

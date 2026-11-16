@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from watchtower.config.filters import build_filter
-from watchtower.errors import ConfigError
+from watchtower import Change, ChangeKind, ConfigError, Item
+from watchtower.config._filters import build_filter
 from watchtower.filters import (
     And,
     NewItems,
@@ -14,7 +14,6 @@ from watchtower.filters import (
     PriceBelow,
     TextContains,
 )
-from watchtower.models import Change, ChangeKind, Item
 
 
 def test_build_named_filter_from_string() -> None:
