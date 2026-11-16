@@ -23,6 +23,9 @@ from watchtower.core._builder import WatcherBuilder
 _ALLOWED_TOP_LEVEL_KEYS = {"database", "watchers"}
 _ALLOWED_WATCHER_KEYS = {"name", "source", "diff", "interval", "filters", "notify"}
 
+type _YamlMapping = dict[str, Any]
+type _WatcherConfigDict = dict[str, Any]
+
 
 @dataclass(frozen=True)
 class Config:
@@ -40,7 +43,7 @@ class Config:
     watchers: tuple[WatcherBuilder, ...]
 
 
-def _read_yaml(path: Path) -> dict[str, Any]:
+def _read_yaml(path: Path) -> _YamlMapping:
     """Read and parse a YAML configuration file.
 
     Args:
@@ -70,11 +73,11 @@ def _read_yaml(path: Path) -> dict[str, Any]:
     return data
 
 
-def _resolve_database(data: dict[str, Any], config_dir: Path) -> Path | None:
+def _resolve_database(raw_database: object, config_dir: Path) -> Path | None:
     """Resolve database path from configuration data.
 
     Args:
-        data: Parsed configuration dictionary.
+        raw_database: Raw database configuration value from the config file.
         config_dir: Directory containing the config file.
 
     Returns:
@@ -83,14 +86,13 @@ def _resolve_database(data: dict[str, Any], config_dir: Path) -> Path | None:
     Raises:
         ConfigError: If the database path is not valid text or is empty.
     """
-    if "database" not in data or data["database"] is None:
+    if raw_database is None:
         return None
-    raw = data["database"]
-    if not isinstance(raw, str) or not raw:
-        msg = f"Config file key 'database' must be a non-empty string, got {raw!r}"
+    if not isinstance(raw_database, str) or not raw_database:
+        msg = f"Config file key 'database' must be a non-empty string, got {raw_database!r}"
         raise ConfigError(msg)
-    raw_path = Path(raw)
-    return raw_path if raw_path.is_absolute() else config_dir / raw_path
+    path = Path(raw_database)
+    return path if path.is_absolute() else config_dir / path
 
 
 def _build_component[T](
@@ -142,7 +144,7 @@ def _build_component[T](
         raise ConfigError(msg) from err
 
 
-def _watcher_name(entry: dict[str, Any], seen_names: set[str]) -> str:
+def _watcher_name(entry: _WatcherConfigDict, seen_names: set[str]) -> str:
     """Validate and return the watcher name, ensuring it is unique."""
     if "name" not in entry:
         msg = "Watcher entry missing required key 'name'"
@@ -158,7 +160,7 @@ def _watcher_name(entry: dict[str, Any], seen_names: set[str]) -> str:
     return name
 
 
-def _check_watcher_keys(name: str, entry: dict[str, Any]) -> None:
+def _check_watcher_keys(name: str, entry: _WatcherConfigDict) -> None:
     """Validate allowed keys and ensure required source and diff keys are present."""
     for key in entry:
         if key not in _ALLOWED_WATCHER_KEYS:
@@ -172,7 +174,7 @@ def _check_watcher_keys(name: str, entry: dict[str, Any]) -> None:
         raise ConfigError(msg)
 
 
-def _add_interval(builder: WatcherBuilder, name: str, entry: dict[str, Any]) -> None:
+def _add_interval(builder: WatcherBuilder, name: str, entry: _WatcherConfigDict) -> None:
     """Configure check interval on the builder if specified."""
     if "interval" not in entry:
         return
@@ -183,7 +185,7 @@ def _add_interval(builder: WatcherBuilder, name: str, entry: dict[str, Any]) -> 
         raise ConfigError(msg) from err
 
 
-def _add_filters(builder: WatcherBuilder, name: str, entry: dict[str, Any]) -> None:
+def _add_filters(builder: WatcherBuilder, name: str, entry: _WatcherConfigDict) -> None:
     """Configure filter chain on the builder if specified."""
     if "filters" not in entry:
         return
@@ -195,7 +197,7 @@ def _add_filters(builder: WatcherBuilder, name: str, entry: dict[str, Any]) -> N
         builder.only_if(build_filter(name, filter_entry))
 
 
-def _add_notifiers(builder: WatcherBuilder, name: str, entry: dict[str, Any]) -> None:
+def _add_notifiers(builder: WatcherBuilder, name: str, entry: _WatcherConfigDict) -> None:
     """Configure notifiers on the builder if specified."""
     if "notify" not in entry:
         return
@@ -256,17 +258,17 @@ def load_config(path: Path) -> Config:
         ConfigError: If the file is missing, is not valid YAML, lacks a
             required key, names an unknown plugin or repeats a watcher name.
     """
-    data = _read_yaml(path)
-    for key in data:
+    raw_config = _read_yaml(path)
+    for key in raw_config:
         if key not in _ALLOWED_TOP_LEVEL_KEYS:
             msg = f"Config file has unknown key {key!r}"
             raise ConfigError(msg)
 
-    database = _resolve_database(data, path.parent)
-    if "watchers" not in data:
+    database = _resolve_database(raw_config.get("database"), path.parent)
+    if "watchers" not in raw_config:
         msg = f"Config file {path} lacks required key 'watchers'"
         raise ConfigError(msg)
-    watchers_raw = data["watchers"]
+    watchers_raw = raw_config["watchers"]
     if not isinstance(watchers_raw, list):
         msg = f"Config file {path} key 'watchers' must be a list"
         raise ConfigError(msg)

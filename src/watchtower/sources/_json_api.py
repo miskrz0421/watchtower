@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterable, Mapping
-from typing import Any
 
 import httpx
 
@@ -13,6 +12,8 @@ from watchtower._models import Item
 from watchtower._registry import register_source
 from watchtower.sources._http import DEFAULT_TIMEOUT_SECONDS, HttpSource
 from watchtower.sources._parsing import non_empty_string, parse_price
+
+type _JsonValue = None | bool | int | float | str | list[_JsonValue] | dict[str, _JsonValue]
 
 
 @register_source("json_api")
@@ -70,19 +71,20 @@ class JSONAPISource(HttpSource):
                 list, or an object lacks its key or title.
         """
         try:
-            data = json.loads(raw)
+            payload: _JsonValue = json.loads(raw)
         except json.JSONDecodeError as err:
             msg = f"Response is not valid JSON: {err}"
             raise ParseError(msg) from err
         return [
-            self._to_item(obj, position) for position, obj in enumerate(self._items(data), start=1)
+            self._to_item(raw_item, position)
+            for position, raw_item in enumerate(self._items(payload), start=1)
         ]
 
-    def _items(self, data: Any) -> list[Any]:
+    def _items(self, payload: _JsonValue) -> list[_JsonValue]:
         """Return the list of objects at the configured path in the response.
 
         Args:
-            data: Parsed JSON document.
+            payload: Parsed JSON document.
 
         Returns:
             The list of objects to turn into Items.
@@ -91,25 +93,26 @@ class JSONAPISource(HttpSource):
             ParseError: If the path does not exist in the response or does
                 not lead to a list.
         """
+        current = payload
         for part in self._items_path:
-            if not isinstance(data, Mapping) or part not in data:
+            if not isinstance(current, Mapping) or part not in current:
                 msg = f"Path {'.'.join(self._items_path)!r} does not exist in the response"
                 raise ParseError(msg)
-            data = data[part]
-        if not isinstance(data, list):
+            current = current[part]
+        if not isinstance(current, list):
             msg = (
                 "Response is not a JSON list"
                 if len(self._items_path) == 0
                 else f"Path {'.'.join(self._items_path)!r} does not lead to a list"
             )
             raise ParseError(msg)
-        return data
+        return current
 
-    def _to_item(self, obj: Any, position: int) -> Item:
+    def _to_item(self, raw_item: _JsonValue, position: int) -> Item:
         """Convert one object from the list to an Item, validating its fields.
 
         Args:
-            obj: Object from the list at the configured path.
+            raw_item: Object from the list at the configured path.
             position: Number of the object in the list, from 1, for error messages.
 
         Returns:
@@ -118,37 +121,37 @@ class JSONAPISource(HttpSource):
         Raises:
             ParseError: If the object is not a JSON object, or has no key or title.
         """
-        if not isinstance(obj, Mapping):
+        if not isinstance(raw_item, Mapping):
             msg = f"Object {position} in the list is not a JSON object"
             raise ParseError(msg)
 
-        key = non_empty_string(obj.get(self._key_field))
+        key = non_empty_string(raw_item.get(self._key_field))
         if key is None:
             msg = f"Object {position} has no {self._key_field!r}"
             raise ParseError(msg)
 
-        title = non_empty_string(obj.get(self._title_field))
+        title = non_empty_string(raw_item.get(self._title_field))
         if title is None:
             msg = f"Object {position} ({key!r}) has no {self._title_field!r}"
             raise ParseError(msg)
 
-        url = non_empty_string(obj.get(self._url_field)) if self._url_field else None
-        price = _price(obj.get(self._price_field)) if self._price_field else None
-        text = (non_empty_string(obj.get(self._text_field)) or "") if self._text_field else ""
+        url = non_empty_string(raw_item.get(self._url_field)) if self._url_field else None
+        price = _price(raw_item.get(self._price_field)) if self._price_field else None
+        text = (non_empty_string(raw_item.get(self._text_field)) or "") if self._text_field else ""
         return Item(key=key, title=title, url=url, price=price, text=text)
 
 
-def _price(value: Any) -> float | None:
+def _price(raw_price: _JsonValue) -> float | None:
     """Return the value of a price field as a float, if it holds a price.
 
     Args:
-        value: Field value from the API.
+        raw_price: Field value from the API.
 
     Returns:
         A number as a float, or a string parsed for a price, or None.
     """
-    if value is None or isinstance(value, bool):
+    if raw_price is None or isinstance(raw_price, bool):
         return None
-    if isinstance(value, int | float):
-        return float(value)
-    return parse_price(str(value))
+    if isinstance(raw_price, int | float):
+        return float(raw_price)
+    return parse_price(str(raw_price))
