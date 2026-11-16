@@ -333,3 +333,26 @@ PR that makes the decision.
   large histories without memory spikes. Iterating a generator holds the SQLite connection open,
   keeping a read lock until consumption finishes; in M5 (background engine thread) callers should
   consume rows promptly to avoid delaying writers.
+
+## ADR-022: The CLI runs watchers from a config file
+- Status: accepted · M3
+- Context: until M2 the CLI had hard-coded demo watchers (`check`, `check --db`,
+  `check FILE --db`). With the YAML loader, any watcher can be described in a file.
+- Decision:
+  - `watchtower check CONFIG` checks every watcher once and prints one line per watcher
+    (baseline saved, no changes, or the summary of what the notifiers printed). A failing
+    watcher is reported on stderr and the others still run; the exit code is 1 if any failed.
+  - `watchtower run CONFIG` adds every watcher to a `Scheduler` and runs it until Ctrl+C, with a
+    `LoggingObserver` attached. Logging shows Watchtower's INFO lines, and other libraries'
+    (httpx logs every request) only from WARNING.
+  - `watchtower plugins` prints `list_plugins()`.
+  - When the config names a `database`, both commands share one `SnapshotStore` and record
+    every check and change through a `HistoryRecorder` on the same file. Without one, snapshots
+    stay in memory, so every `check` is a baseline.
+  - The hard-coded demo watchers and their options are removed; `examples/config.yaml` replaces
+    them.
+- Alternatives: keeping `check FILE --db` as a shortcut (a `file` source in a config does the
+  same, and two ways to do one thing need two sets of tests); stopping `check` at the first
+  failing watcher (one broken website would hide the results of the others).
+- Consequences: every demo needs a config file. `check` without a `database` is only useful to
+  test that a config loads and its sources answer.

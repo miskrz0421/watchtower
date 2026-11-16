@@ -36,7 +36,7 @@ just format                # fix formatting and auto-fixable lint problems
 just typecheck             # mypy
 just check                 # everything CI runs; do this before pushing
 just serve                 # fake listings website for demos
-just watchtower check      # the app; arguments are passed on
+just watchtower plugins    # the app; arguments are passed on
 ```
 
 `uv sync --all-extras` also installs the reports extra (pandas, matplotlib).
@@ -45,10 +45,7 @@ The app's own commands are entry points declared under `[project.scripts]` in `p
 (added milestone by milestone):
 
 ```bash
-uv run watchtower check                # run the built-in demo watcher (M1)
-uv run watchtower check --db PATH      # demo listings watcher with saved state (M2)
-uv run watchtower check FILE --db PATH # changes in a local file since the last run (M2)
-uv run watchtower check config.yaml    # run every watcher once        (M3)
+uv run watchtower check config.yaml    # check every watcher once      (M3)
 uv run watchtower run config.yaml      # headless scheduler            (M3)
 uv run watchtower plugins              # list registered plugins       (M3)
 uv run watchtower gui config.yaml      # tray app                      (M5)
@@ -56,15 +53,21 @@ uv run watchtower report --out out/    # export charts                 (M6)
 uv run watchtower-fake-listings        # fake listings website for demos
 ```
 
-## M2 demo: remembering state between runs
+## Demo: watchers from a config file
+
+[`examples/config.yaml`](examples/config.yaml) describes two watchers on the fake listings
+website. The first reports only new flats under 3000 zł without "agency" in the text.
 
 ```bash
-just serve                               # terminal 1: fake listings site
-uv run watchtower check --db demo.db     # terminal 2: "Baseline saved", nothing reported
-# add a listing to examples/fake_listings/listings.json, then:
-uv run watchtower check --db demo.db     # the new listing is reported
-uv run watchtower check --db demo.db     # "No changes": no false alert after a restart
+just serve                                  # terminal 1: fake listings site
+just watchtower run examples/config.yaml    # terminal 2: checks every 30 s / 1 min, Ctrl+C stops
+# add a cheap flat to examples/fake_listings/listings.json: it is reported;
+# an expensive one, or one from an agency, is not
 ```
+
+`just watchtower check examples/config.yaml` checks every watcher once instead. Snapshots and
+the history of checks and changes are kept in the SQLite file named by `database`
+(`examples/watchtower.db`), so a restart does not report old changes again.
 
 See [examples/fake_listings/README.md](examples/fake_listings/README.md) for the server.
 

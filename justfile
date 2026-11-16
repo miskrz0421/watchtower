@@ -37,7 +37,7 @@ check:
 coverage:
     uv run pytest --cov-report=html
 
-# Run the app, e.g. `just watchtower check --db demo.db`
+# Run the app, e.g. `just watchtower run examples/config.yaml`
 watchtower *args:
     uv run watchtower {{ args }}
 
