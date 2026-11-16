@@ -127,7 +127,7 @@ def _change_to_row(
     change: Change,
 ) -> _ChangeRow:
     """Convert a single Change into a typed database row mapping."""
-    item = change.item or change.before
+    item = change.item if change.item is not None else change.before
     return {
         "watcher_name": watcher_name,
         "timestamp": timestamp_iso,

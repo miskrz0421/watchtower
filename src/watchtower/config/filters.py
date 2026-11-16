@@ -9,29 +9,16 @@ from watchtower.filters.base import Filter
 from watchtower.registry import create_filter, list_plugins
 
 
-def _safe_create_leaf_filter(watcher_name: str, name: str, *args: Any) -> Filter:
-    """Instantiate a leaf filter plugin, mapping exceptions to ConfigError."""
+def _create_filter(watcher_name: str, name: str, *args: object) -> Filter:
+    """Create a registered filter, turning a bad name or bad arguments into ConfigError."""
     registered = list_plugins("filter").get("filter", [])
     if name not in registered:
         msg = f"Watcher {watcher_name!r} key 'filters': unknown filter {name!r}"
         raise ConfigError(msg)
     try:
         return create_filter(name, *args)
-    except (TypeError, ValueError, KeyError) as err:
+    except (TypeError, ValueError) as err:
         msg = f"Watcher {watcher_name!r} key 'filters': filter {name!r} {err}"
-        raise ConfigError(msg) from err
-
-
-def _safe_create_composite_filter(watcher_name: str, name: str, *inner_filters: Filter) -> Filter:
-    """Instantiate a composite filter plugin, mapping exceptions to ConfigError."""
-    registered = list_plugins("filter").get("filter", [])
-    if name not in registered:
-        msg = f"Watcher {watcher_name!r} key 'filters': unknown filter {name!r}"
-        raise ConfigError(msg)
-    try:
-        return create_filter(name, *inner_filters)
-    except (TypeError, ValueError, KeyError) as err:
-        msg = f"Watcher {watcher_name!r} key 'filters': {err}"
         raise ConfigError(msg) from err
 
 
@@ -60,7 +47,7 @@ def _build_n_ary_filter(watcher_name: str, name: str, val: object) -> Filter:
         msg = f"Watcher {watcher_name!r} key 'filters': {name!r} requires at least one filter"
         raise ConfigError(msg)
     inner_filters = [build_filter(watcher_name, item) for item in val]
-    return _safe_create_composite_filter(watcher_name, name, *inner_filters)
+    return _create_filter(watcher_name, name, *inner_filters)
 
 
 def _build_not_filter(watcher_name: str, val: object) -> Filter:
@@ -70,7 +57,7 @@ def _build_not_filter(watcher_name: str, val: object) -> Filter:
         raise ConfigError(msg)
     inner_item = val[0] if isinstance(val, list) else val
     inner_filter = build_filter(watcher_name, inner_item)
-    return _safe_create_composite_filter(watcher_name, "not", inner_filter)
+    return _create_filter(watcher_name, "not", inner_filter)
 
 
 def build_filter(watcher_name: str, entry: object) -> Filter:
@@ -87,7 +74,7 @@ def build_filter(watcher_name: str, entry: object) -> Filter:
         ConfigError: If the entry format is invalid or references an unknown plugin.
     """
     if isinstance(entry, str):
-        return _safe_create_leaf_filter(watcher_name, entry)
+        return _create_filter(watcher_name, entry)
 
     if not isinstance(entry, dict):
         msg = (
@@ -104,4 +91,4 @@ def build_filter(watcher_name: str, entry: object) -> Filter:
     if filter_name == "not":
         return _build_not_filter(watcher_name, val)
 
-    return _safe_create_leaf_filter(watcher_name, filter_name, val)
+    return _create_filter(watcher_name, filter_name, val)

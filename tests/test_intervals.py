@@ -53,12 +53,19 @@ def test_parse_valid_intervals(text: str, expected: timedelta) -> None:
         " 15m",
         "15m ",
         "15 m",
+        "15m\n",
     ],
 )
 def test_parse_invalid_intervals_raise_config_error(text: str) -> None:
     """Test that invalid interval formats and non-positive numbers raise ConfigError."""
     with pytest.raises(ConfigError):
         parse_interval(text)
+
+
+def test_parse_interval_overflow_raises_config_error() -> None:
+    """Test that an interval that exceeds timedelta limits raises ConfigError."""
+    with pytest.raises(ConfigError, match=r"Interval '9999999999d' is too long"):
+        parse_interval("9999999999d")
 
 
 def test_parse_non_string_raises_config_error() -> None:

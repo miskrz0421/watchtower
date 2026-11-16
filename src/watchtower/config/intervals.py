@@ -7,7 +7,7 @@ from datetime import timedelta
 
 from watchtower.errors import ConfigError
 
-_INTERVAL_PATTERN = re.compile(r"^(\d+)([smhd])$")
+_INTERVAL_PATTERN = re.compile(r"(\d+)([smhd])")
 _UNIT_MAP = {
     "s": "seconds",
     "m": "minutes",
@@ -29,12 +29,13 @@ def parse_interval(text: str) -> timedelta:
         The interval as a timedelta.
 
     Raises:
-        ConfigError: If the text is not a number and a unit, or is not positive.
+        ConfigError: If the text is not a number and a unit, or is not positive,
+            or represents an interval that is too long.
     """
     if not isinstance(text, str):
         msg = f"Interval must be text, got {text!r}"
         raise ConfigError(msg)
-    match = _INTERVAL_PATTERN.match(text)
+    match = _INTERVAL_PATTERN.fullmatch(text)
     if match is None:
         msg = (
             f"Invalid interval {text!r}; "
@@ -47,4 +48,8 @@ def parse_interval(text: str) -> timedelta:
         msg = f"Interval must be positive, got {text!r}"
         raise ConfigError(msg)
     keyword = _UNIT_MAP[unit]
-    return timedelta(**{keyword: value})
+    try:
+        return timedelta(**{keyword: value})
+    except OverflowError as err:
+        msg = f"Interval {text!r} is too long"
+        raise ConfigError(msg) from err

@@ -81,15 +81,15 @@ def _resolve_database(data: dict[str, Any], config_dir: Path) -> Path | None:
         The resolved absolute or config-relative Path, or None if omitted.
 
     Raises:
-        ConfigError: If the database path is not valid text.
+        ConfigError: If the database path is not valid text or is empty.
     """
     if "database" not in data or data["database"] is None:
         return None
     raw = data["database"]
-    if not isinstance(raw, str) or not raw.strip():
+    if not isinstance(raw, str) or not raw:
         msg = f"Config file key 'database' must be a non-empty string, got {raw!r}"
         raise ConfigError(msg)
-    raw_path = Path(raw.strip())
+    raw_path = Path(raw)
     return raw_path if raw_path.is_absolute() else config_dir / raw_path
 
 
@@ -99,18 +99,15 @@ def _build_component[T](
     factory: Callable[..., T],
     watcher_name: str,
     config: object,
-    *,
-    is_entry: bool = False,
 ) -> T:
     """Instantiate a plugin component (source, differ, notifier) from config mapping.
 
     Args:
         key_name: Configuration key name (e.g. 'source', 'diff', 'notify').
-        plugin_kind: Human-readable component name for error messages.
+        plugin_kind: Registry plugin category (e.g. 'source', 'differ', 'notifier').
         factory: Registry factory function to instantiate the plugin.
         watcher_name: Name of the watcher for error messages.
         config: Component configuration mapping.
-        is_entry: Whether this is an entry in a list (affects error phrasing).
 
     Returns:
         The instantiated plugin object.
@@ -118,12 +115,11 @@ def _build_component[T](
     Raises:
         ConfigError: If configuration is invalid or names an unknown plugin.
     """
-    prefix = "entry " if is_entry else ""
     if not isinstance(config, dict):
-        msg = f"Watcher {watcher_name!r} key {key_name!r}: {prefix}must be a mapping"
+        msg = f"Watcher {watcher_name!r} key {key_name!r}: must be a mapping"
         raise ConfigError(msg)
     if "type" not in config:
-        msg = f"Watcher {watcher_name!r} key {key_name!r}: {prefix}missing required key 'type'"
+        msg = f"Watcher {watcher_name!r} key {key_name!r}: missing required key 'type'"
         raise ConfigError(msg)
     plugin_type = config["type"]
     if not isinstance(plugin_type, str):
@@ -141,9 +137,74 @@ def _build_component[T](
     params = {k: v for k, v in config.items() if k != "type"}
     try:
         return factory(plugin_type, **params)
-    except (TypeError, ValueError, KeyError) as err:
+    except (TypeError, ValueError) as err:
         msg = f"Watcher {watcher_name!r} key {key_name!r}: {err}"
         raise ConfigError(msg) from err
+
+
+def _watcher_name(entry: dict[str, Any], seen_names: set[str]) -> str:
+    """Validate and return the watcher name, ensuring it is unique."""
+    if "name" not in entry:
+        msg = "Watcher entry missing required key 'name'"
+        raise ConfigError(msg)
+    name = entry["name"]
+    if not isinstance(name, str) or not name.strip():
+        msg = f"Watcher key 'name' must be a non-empty string, got {name!r}"
+        raise ConfigError(msg)
+    if name in seen_names:
+        msg = f"Watcher {name!r} key 'name': duplicate watcher name"
+        raise ConfigError(msg)
+    seen_names.add(name)
+    return name
+
+
+def _check_watcher_keys(name: str, entry: dict[str, Any]) -> None:
+    """Validate allowed keys and ensure required source and diff keys are present."""
+    for key in entry:
+        if key not in _ALLOWED_WATCHER_KEYS:
+            msg = f"Watcher {name!r} has unknown key {key!r}"
+            raise ConfigError(msg)
+    if "source" not in entry:
+        msg = f"Watcher {name!r} missing required key 'source'"
+        raise ConfigError(msg)
+    if "diff" not in entry:
+        msg = f"Watcher {name!r} missing required key 'diff'"
+        raise ConfigError(msg)
+
+
+def _add_interval(builder: WatcherBuilder, name: str, entry: dict[str, Any]) -> None:
+    """Configure check interval on the builder if specified."""
+    if "interval" not in entry:
+        return
+    try:
+        builder.every(parse_interval(entry["interval"]))
+    except ConfigError as err:
+        msg = f"Watcher {name!r} key 'interval': {err}"
+        raise ConfigError(msg) from err
+
+
+def _add_filters(builder: WatcherBuilder, name: str, entry: dict[str, Any]) -> None:
+    """Configure filter chain on the builder if specified."""
+    if "filters" not in entry:
+        return
+    filters_raw = entry["filters"]
+    if not isinstance(filters_raw, list):
+        msg = f"Watcher {name!r} key 'filters': must be a list"
+        raise ConfigError(msg)
+    for filter_entry in filters_raw:
+        builder.only_if(build_filter(name, filter_entry))
+
+
+def _add_notifiers(builder: WatcherBuilder, name: str, entry: dict[str, Any]) -> None:
+    """Configure notifiers on the builder if specified."""
+    if "notify" not in entry:
+        return
+    notify_raw = entry["notify"]
+    if not isinstance(notify_raw, list):
+        msg = f"Watcher {name!r} key 'notify': must be a list"
+        raise ConfigError(msg)
+    for notifier_cfg in notify_raw:
+        builder.notify(_build_component("notify", "notifier", create_notifier, name, notifier_cfg))
 
 
 def _build_watcher(entry: object, seen_names: set[str]) -> WatcherBuilder:
@@ -160,58 +221,19 @@ def _build_watcher(entry: object, seen_names: set[str]) -> WatcherBuilder:
         ConfigError: If the watcher configuration has missing or invalid keys.
     """
     if not isinstance(entry, dict):
-        raise ConfigError("Watcher entry must be a mapping")
+        msg = "Watcher entry must be a mapping"
+        raise ConfigError(msg)
 
-    if "name" not in entry:
-        raise ConfigError("Watcher entry missing required key 'name'")
-    name = entry["name"]
-    if not isinstance(name, str) or not name.strip():
-        raise ConfigError(f"Watcher key 'name' must be a non-empty string, got {name!r}")
-    if name in seen_names:
-        raise ConfigError(f"Watcher {name!r} key 'name': duplicate watcher name")
-    seen_names.add(name)
-
-    for key in entry:
-        if key not in _ALLOWED_WATCHER_KEYS:
-            raise ConfigError(f"Watcher {name!r} has unknown key {key!r}")
-
-    if "source" not in entry:
-        raise ConfigError(f"Watcher {name!r} missing required key 'source'")
-    if "diff" not in entry:
-        raise ConfigError(f"Watcher {name!r} missing required key 'diff'")
+    name = _watcher_name(entry, seen_names)
+    _check_watcher_keys(name, entry)
 
     source = _build_component("source", "source", create_source, name, entry["source"])
     differ = _build_component("diff", "differ", create_differ, name, entry["diff"])
-
     builder = WatcherBuilder(name).source(source).diff(differ)
 
-    if "interval" in entry:
-        raw_interval = entry["interval"]
-        if not isinstance(raw_interval, str):
-            msg = f"Watcher {name!r} key 'interval': expected text, got {raw_interval!r}"
-            raise ConfigError(msg)
-        try:
-            builder.every(parse_interval(raw_interval))
-        except ConfigError as err:
-            raise ConfigError(f"Watcher {name!r} key 'interval': {err}") from err
-
-    if "filters" in entry:
-        filters_raw = entry["filters"]
-        if not isinstance(filters_raw, list):
-            raise ConfigError(f"Watcher {name!r} key 'filters': must be a list")
-        for filter_entry in filters_raw:
-            builder.only_if(build_filter(name, filter_entry))
-
-    if "notify" in entry:
-        notify_raw = entry["notify"]
-        if not isinstance(notify_raw, list):
-            raise ConfigError(f"Watcher {name!r} key 'notify': must be a list")
-        for notifier_cfg in notify_raw:
-            builder.notify(
-                _build_component(
-                    "notify", "notifier", create_notifier, name, notifier_cfg, is_entry=True
-                )
-            )
+    _add_interval(builder, name, entry)
+    _add_filters(builder, name, entry)
+    _add_notifiers(builder, name, entry)
 
     return builder
 

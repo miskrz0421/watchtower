@@ -330,4 +330,6 @@ PR that makes the decision.
   eager lists (loads the entire historical log into memory at once); storing raw JSON like
   snapshots (prevents relational queries and filtering by watcher in SQL).
 - Consequences: all persistent state resides in a single database file. Streaming queries scale to
-  large histories without memory spikes.
+  large histories without memory spikes. Iterating a generator holds the SQLite connection open,
+  keeping a read lock until consumption finishes; in M5 (background engine thread) callers should
+  consume rows promptly to avoid delaying writers.

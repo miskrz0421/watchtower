@@ -17,23 +17,31 @@ from watchtower.filters import (
     NewItems,
     Not,
     Or,
-    PriceAbove,
     PriceBelow,
     TextContains,
 )
+from watchtower.models import Change, ChangeKind, Item
 from watchtower.notifiers.console import ConsoleNotifier
 from watchtower.sources.fake import FakeSource
 from watchtower.sources.rss import RSSSource
 from watchtower.sources.webpage import WebPageSource
 
 
+def _write_config(tmp_path: Path, text: str) -> Path:
+    """Write YAML text to a config file in tmp_path."""
+    config_file = tmp_path / "config.yaml"
+    config_file.parent.mkdir(parents=True, exist_ok=True)
+    config_file.write_text(text, encoding="utf-8")
+    return config_file
+
+
 def test_load_example_config() -> None:
     """Test loading the official examples/config.yaml file."""
-    config_path = Path("examples/config.yaml")
+    config_path = Path(__file__).parents[1] / "examples" / "config.yaml"
     config = load_config(config_path)
 
     assert isinstance(config, Config)
-    assert config.database == Path("examples/watchtower.db")
+    assert config.database == config_path.parent / "watchtower.db"
     assert len(config.watchers) == 2
 
     # Watcher 1
@@ -46,10 +54,20 @@ def test_load_example_config() -> None:
     assert len(w1.filters) == 3
     assert isinstance(w1.filters[0], NewItems)
     assert isinstance(w1.filters[1], PriceBelow)
-    assert w1.filters[1]._limit == 3000
     assert isinstance(w1.filters[2], Not)
-    assert isinstance(w1.filters[2]._inner, TextContains)
-    assert w1.filters[2]._inner._phrase == "agency"
+
+    cheap_direct = Change(kind=ChangeKind.NEW, item=Item(key="1", title="Direct flat", price=2500))
+    expensive_direct = Change(
+        kind=ChangeKind.NEW, item=Item(key="2", title="Direct flat", price=3500)
+    )
+    agency_flat = Change(
+        kind=ChangeKind.NEW, item=Item(key="3", title="Estate Agency flat", price=2000)
+    )
+    assert w1.filters[1].matches(cheap_direct)
+    assert not w1.filters[1].matches(expensive_direct)
+    assert w1.filters[2].matches(cheap_direct)
+    assert not w1.filters[2].matches(agency_flat)
+
     assert len(w1.notifiers) == 1
     assert isinstance(w1.notifiers[0], ConsoleNotifier)
 
@@ -68,9 +86,8 @@ def test_load_example_config() -> None:
 
 def test_yaml_watcher_equals_python_builder_watcher(tmp_path: Path) -> None:
     """Test that a watcher built from YAML equals the same watcher built with WatcherBuilder."""
-    yaml_file = tmp_path / "test_config.yaml"
-    # Note: watchtower_settings is unknown, so fix content without unknown keys
-    yaml_file.write_text(
+    yaml_file = _write_config(
+        tmp_path,
         """
 database: app.db
 watchers:
@@ -89,7 +106,6 @@ watchers:
     notify:
       - type: console
 """,
-        encoding="utf-8",
     )
 
     config = load_config(yaml_file)
@@ -114,24 +130,27 @@ watchers:
     assert type(from_yaml.source) is type(from_python.source)
     assert type(from_yaml.differ) is type(from_python.differ)
     assert len(from_yaml.filters) == len(from_python.filters)
-    assert isinstance(from_yaml.filters[0], NewItems)
-    assert isinstance(from_python.filters[0], NewItems)
-    assert isinstance(from_yaml.filters[1], PriceBelow)
-    assert isinstance(from_python.filters[1], PriceBelow)
-    assert from_yaml.filters[1]._limit == from_python.filters[1]._limit
-    assert isinstance(from_yaml.filters[2], Not)
-    assert isinstance(from_python.filters[2], Not)
-    assert isinstance(from_yaml.filters[2]._inner, TextContains)
-    assert isinstance(from_python.filters[2]._inner, TextContains)
-    assert from_yaml.filters[2]._inner._phrase == from_python.filters[2]._inner._phrase
+    assert [type(f) for f in from_yaml.filters] == [type(f) for f in from_python.filters]
+
+    sample_changes = [
+        Change(kind=ChangeKind.NEW, item=Item(key="1", title="Cheap private", price=2000)),
+        Change(kind=ChangeKind.NEW, item=Item(key="2", title="Agency flat", price=2000)),
+        Change(kind=ChangeKind.NEW, item=Item(key="3", title="Expensive flat", price=3000)),
+        Change(kind=ChangeKind.CHANGED, item=Item(key="4", title="Changed flat", price=1500)),
+    ]
+    for change in sample_changes:
+        yaml_results = [f.matches(change) for f in from_yaml.filters]
+        python_results = [f.matches(change) for f in from_python.filters]
+        assert yaml_results == python_results
+
     assert len(from_yaml.notifiers) == len(from_python.notifiers)
     assert type(from_yaml.notifiers[0]) is type(from_python.notifiers[0])
 
 
 def test_nested_composite_filters(tmp_path: Path) -> None:
     """Test loading deeply nested composite filters with all, any, and not."""
-    yaml_file = tmp_path / "nested.yaml"
-    yaml_file.write_text(
+    yaml_file = _write_config(
+        tmp_path,
         """
 watchers:
   - name: Complex filter watcher
@@ -145,7 +164,6 @@ watchers:
               - price_above: 6000
           - not: { text_contains: quiet }
 """,
-        encoding="utf-8",
     )
 
     config = load_config(yaml_file)
@@ -154,20 +172,25 @@ watchers:
     assert len(watcher.filters) == 1
     top = watcher.filters[0]
     assert isinstance(top, And)
-    assert len(top._filters) == 3
-    assert isinstance(top._filters[0], NewItems)
-    assert isinstance(top._filters[1], Or)
-    assert len(top._filters[1]._filters) == 2
-    assert isinstance(top._filters[1]._filters[0], PriceBelow)
-    assert isinstance(top._filters[1]._filters[1], PriceAbove)
-    assert isinstance(top._filters[2], Not)
-    assert isinstance(top._filters[2]._inner, TextContains)
+
+    # Behavior checks for the composite filter hierarchy
+    assert top.matches(Change(kind=ChangeKind.NEW, item=Item(key="1", title="Sunny", price=1500)))
+    assert top.matches(
+        Change(kind=ChangeKind.NEW, item=Item(key="2", title="Penthouse", price=8000))
+    )
+    assert not top.matches(Change(kind=ChangeKind.NEW, item=Item(key="3", title="Mid", price=3000)))
+    assert not top.matches(
+        Change(kind=ChangeKind.NEW, item=Item(key="4", title="Quiet room", price=1500))
+    )
+    assert not top.matches(
+        Change(kind=ChangeKind.CHANGED, item=Item(key="5", title="Sunny", price=1500))
+    )
 
 
 def test_relative_and_absolute_database_path(tmp_path: Path) -> None:
     """Test database path resolution for both relative and absolute paths."""
-    rel_file = tmp_path / "rel.yaml"
-    rel_file.write_text(
+    rel_file = _write_config(
+        tmp_path,
         """
 database: state.db
 watchers:
@@ -175,13 +198,12 @@ watchers:
     source: { type: fake }
     diff: { type: text }
 """,
-        encoding="utf-8",
     )
     assert load_config(rel_file).database == tmp_path / "state.db"
 
     abs_db = tmp_path / "custom" / "abs.db"
-    abs_file = tmp_path / "abs.yaml"
-    abs_file.write_text(
+    abs_file = _write_config(
+        tmp_path / "nested_dir",
         f"""
 database: "{abs_db.as_posix()}"
 watchers:
@@ -189,19 +211,17 @@ watchers:
     source: {{ type: fake }}
     diff: {{ type: text }}
 """,
-        encoding="utf-8",
     )
     assert load_config(abs_file).database == abs_db
 
-    no_db_file = tmp_path / "no_db.yaml"
-    no_db_file.write_text(
+    no_db_file = _write_config(
+        tmp_path / "other_dir",
         """
 watchers:
   - name: W
     source: { type: fake }
     diff: { type: text }
 """,
-        encoding="utf-8",
     )
     assert load_config(no_db_file).database is None
 
@@ -212,403 +232,11 @@ def test_missing_file_raises_config_error(tmp_path: Path) -> None:
         load_config(tmp_path / "nonexistent.yaml")
 
 
-def test_invalid_yaml_syntax_raises_config_error(tmp_path: Path) -> None:
-    """Test that malformed YAML syntax raises ConfigError."""
-    bad_file = tmp_path / "bad.yaml"
-    bad_file.write_text("watchers: [unclosed", encoding="utf-8")
-
-    with pytest.raises(ConfigError, match="Invalid YAML"):
-        load_config(bad_file)
-
-
-def test_top_level_not_a_mapping_raises_config_error(tmp_path: Path) -> None:
-    """Test that YAML containing a list at top level raises ConfigError."""
-    bad_file = tmp_path / "list.yaml"
-    bad_file.write_text("- item1\n- item2", encoding="utf-8")
-
-    with pytest.raises(ConfigError, match="must contain a mapping"):
-        load_config(bad_file)
-
-
-def test_unknown_top_level_key_raises_config_error(tmp_path: Path) -> None:
-    """Test that unrecognized top-level keys raise ConfigError."""
-    bad_file = tmp_path / "unknown_top.yaml"
-    bad_file.write_text(
-        """
-unknown_key: 123
-watchers: []
-""",
-        encoding="utf-8",
-    )
-
-    with pytest.raises(ConfigError, match="unknown key 'unknown_key'"):
-        load_config(bad_file)
-
-
-def test_missing_watchers_key_raises_config_error(tmp_path: Path) -> None:
-    """Test that config without watchers key raises ConfigError."""
-    bad_file = tmp_path / "no_watchers.yaml"
-    bad_file.write_text("database: test.db", encoding="utf-8")
-
-    with pytest.raises(ConfigError, match="lacks required key 'watchers'"):
-        load_config(bad_file)
-
-
-def test_watchers_not_a_list_raises_config_error(tmp_path: Path) -> None:
-    """Test that non-list watchers key raises ConfigError."""
-    bad_file = tmp_path / "watchers_not_list.yaml"
-    bad_file.write_text("watchers: not_a_list", encoding="utf-8")
-
-    with pytest.raises(ConfigError, match="key 'watchers' must be a list"):
-        load_config(bad_file)
-
-
-def test_watcher_entry_not_a_mapping_raises_config_error(tmp_path: Path) -> None:
-    """Test that a non-mapping entry in watchers raises ConfigError."""
-    bad_file = tmp_path / "watcher_string.yaml"
-    bad_file.write_text("watchers: ['just a string']", encoding="utf-8")
-
-    with pytest.raises(ConfigError, match="Watcher entry must be a mapping"):
-        load_config(bad_file)
-
-
-def test_watcher_missing_name_raises_config_error(tmp_path: Path) -> None:
-    """Test that a watcher entry without name raises ConfigError."""
-    bad_file = tmp_path / "no_name.yaml"
-    bad_file.write_text(
-        """
-watchers:
-  - source: { type: fake }
-    diff: { type: text }
-""",
-        encoding="utf-8",
-    )
-
-    with pytest.raises(ConfigError, match="missing required key 'name'"):
-        load_config(bad_file)
-
-
-def test_duplicate_watcher_name_raises_config_error(tmp_path: Path) -> None:
-    """Test that duplicate watcher names raise ConfigError naming watcher and key."""
-    bad_file = tmp_path / "duplicate_name.yaml"
-    bad_file.write_text(
-        """
-watchers:
-  - name: Duplicate
-    source: { type: fake }
-    diff: { type: text }
-  - name: Duplicate
-    source: { type: fake }
-    diff: { type: text }
-""",
-        encoding="utf-8",
-    )
-
-    with pytest.raises(ConfigError, match="Watcher 'Duplicate' key 'name': duplicate watcher name"):
-        load_config(bad_file)
-
-
-def test_watcher_unknown_key_raises_config_error(tmp_path: Path) -> None:
-    """Test that an unknown key in a watcher entry raises ConfigError."""
-    bad_file = tmp_path / "unknown_key.yaml"
-    bad_file.write_text(
-        """
-watchers:
-  - name: W
-    source: { type: fake }
-    diff: { type: text }
-    typo_interval: 15m
-""",
-        encoding="utf-8",
-    )
-
-    with pytest.raises(ConfigError, match="Watcher 'W' has unknown key 'typo_interval'"):
-        load_config(bad_file)
-
-
-def test_watcher_missing_source_raises_config_error(tmp_path: Path) -> None:
-    """Test that a watcher missing source raises ConfigError."""
-    bad_file = tmp_path / "no_source.yaml"
-    bad_file.write_text(
-        """
-watchers:
-  - name: W
-    diff: { type: text }
-""",
-        encoding="utf-8",
-    )
-
-    with pytest.raises(ConfigError, match="Watcher 'W' missing required key 'source'"):
-        load_config(bad_file)
-
-
-def test_watcher_invalid_source_raises_config_error(tmp_path: Path) -> None:
-    """Test that non-mapping or invalid source raises ConfigError."""
-    bad_file = tmp_path / "bad_source.yaml"
-    bad_file.write_text(
-        """
-watchers:
-  - name: W
-    source: "not a dict"
-    diff: { type: text }
-""",
-        encoding="utf-8",
-    )
-
-    with pytest.raises(ConfigError, match="Watcher 'W' key 'source': must be a mapping"):
-        load_config(bad_file)
-
-
-def test_watcher_source_missing_type_raises_config_error(tmp_path: Path) -> None:
-    """Test that source without type raises ConfigError."""
-    bad_file = tmp_path / "no_source_type.yaml"
-    bad_file.write_text(
-        """
-watchers:
-  - name: W
-    source: { url: "http://example.com" }
-    diff: { type: text }
-""",
-        encoding="utf-8",
-    )
-
-    with pytest.raises(ConfigError, match="Watcher 'W' key 'source': missing required key 'type'"):
-        load_config(bad_file)
-
-
-def test_watcher_source_unknown_plugin_raises_config_error(tmp_path: Path) -> None:
-    """Test that an unknown source plugin raises ConfigError."""
-    bad_file = tmp_path / "unknown_source.yaml"
-    bad_file.write_text(
-        """
-watchers:
-  - name: W
-    source: { type: nonexistent_source }
-    diff: { type: text }
-""",
-        encoding="utf-8",
-    )
-
-    with pytest.raises(
-        ConfigError, match="Watcher 'W' key 'source': unknown source plugin 'nonexistent_source'"
-    ):
-        load_config(bad_file)
-
-
-def test_watcher_missing_diff_raises_config_error(tmp_path: Path) -> None:
-    """Test that a watcher missing diff raises ConfigError."""
-    bad_file = tmp_path / "no_diff.yaml"
-    bad_file.write_text(
-        """
-watchers:
-  - name: W
-    source: { type: fake }
-""",
-        encoding="utf-8",
-    )
-
-    with pytest.raises(ConfigError, match="Watcher 'W' missing required key 'diff'"):
-        load_config(bad_file)
-
-
-def test_watcher_invalid_diff_raises_config_error(tmp_path: Path) -> None:
-    """Test that non-mapping diff raises ConfigError."""
-    bad_file = tmp_path / "bad_diff.yaml"
-    bad_file.write_text(
-        """
-watchers:
-  - name: W
-    source: { type: fake }
-    diff: "not a dict"
-""",
-        encoding="utf-8",
-    )
-
-    with pytest.raises(ConfigError, match="Watcher 'W' key 'diff': must be a mapping"):
-        load_config(bad_file)
-
-
-def test_watcher_diff_missing_type_raises_config_error(tmp_path: Path) -> None:
-    """Test that diff without type raises ConfigError."""
-    bad_file = tmp_path / "no_diff_type.yaml"
-    bad_file.write_text(
-        """
-watchers:
-  - name: W
-    source: { type: fake }
-    diff: { option: 1 }
-""",
-        encoding="utf-8",
-    )
-
-    with pytest.raises(ConfigError, match="Watcher 'W' key 'diff': missing required key 'type'"):
-        load_config(bad_file)
-
-
-def test_watcher_diff_unknown_plugin_raises_config_error(tmp_path: Path) -> None:
-    """Test that an unknown differ plugin raises ConfigError."""
-    bad_file = tmp_path / "unknown_diff.yaml"
-    bad_file.write_text(
-        """
-watchers:
-  - name: W
-    source: { type: fake }
-    diff: { type: nonexistent_differ }
-""",
-        encoding="utf-8",
-    )
-
-    with pytest.raises(
-        ConfigError, match="Watcher 'W' key 'diff': unknown differ plugin 'nonexistent_differ'"
-    ):
-        load_config(bad_file)
-
-
-def test_watcher_invalid_interval_raises_config_error(tmp_path: Path) -> None:
-    """Test that invalid interval raises ConfigError naming watcher and key."""
-    bad_file = tmp_path / "bad_interval.yaml"
-    bad_file.write_text(
-        """
-watchers:
-  - name: W
-    source: { type: fake }
-    diff: { type: text }
-    interval: -5m
-""",
-        encoding="utf-8",
-    )
-
-    with pytest.raises(ConfigError, match="Watcher 'W' key 'interval'"):
-        load_config(bad_file)
-
-
-def test_watcher_filters_not_a_list_raises_config_error(tmp_path: Path) -> None:
-    """Test that non-list filters raise ConfigError."""
-    bad_file = tmp_path / "bad_filters.yaml"
-    bad_file.write_text(
-        """
-watchers:
-  - name: W
-    source: { type: fake }
-    diff: { type: text }
-    filters: "not a list"
-""",
-        encoding="utf-8",
-    )
-
-    with pytest.raises(ConfigError, match="Watcher 'W' key 'filters': must be a list"):
-        load_config(bad_file)
-
-
-def test_watcher_filter_unknown_plugin_raises_config_error(tmp_path: Path) -> None:
-    """Test that unknown filter plugin raises ConfigError."""
-    bad_file = tmp_path / "unknown_filter.yaml"
-    bad_file.write_text(
-        """
-watchers:
-  - name: W
-    source: { type: fake }
-    diff: { type: text }
-    filters:
-      - unknown_filter_name
-""",
-        encoding="utf-8",
-    )
-
-    with pytest.raises(
-        ConfigError, match="Watcher 'W' key 'filters': unknown filter 'unknown_filter_name'"
-    ):
-        load_config(bad_file)
-
-
-def test_watcher_filter_multiple_keys_raises_config_error(tmp_path: Path) -> None:
-    """Test that a filter mapping with multiple keys raises ConfigError."""
-    bad_file = tmp_path / "multi_key_filter.yaml"
-    bad_file.write_text(
-        """
-watchers:
-  - name: W
-    source: { type: fake }
-    diff: { type: text }
-    filters:
-      - { price_below: 3000, price_above: 1000 }
-""",
-        encoding="utf-8",
-    )
-
-    with pytest.raises(
-        ConfigError, match="Watcher 'W' key 'filters': filter entry must have exactly one key"
-    ):
-        load_config(bad_file)
-
-
-def test_watcher_filter_empty_composite_raises_config_error(tmp_path: Path) -> None:
-    """Test that empty all or any composite filter raises ConfigError."""
-    bad_file = tmp_path / "empty_all.yaml"
-    bad_file.write_text(
-        """
-watchers:
-  - name: W
-    source: { type: fake }
-    diff: { type: text }
-    filters:
-      - all: []
-""",
-        encoding="utf-8",
-    )
-
-    with pytest.raises(
-        ConfigError, match="Watcher 'W' key 'filters': 'all' requires at least one filter"
-    ):
-        load_config(bad_file)
-
-
-def test_watcher_notify_not_a_list_raises_config_error(tmp_path: Path) -> None:
-    """Test that non-list notify raises ConfigError."""
-    bad_file = tmp_path / "bad_notify.yaml"
-    bad_file.write_text(
-        """
-watchers:
-  - name: W
-    source: { type: fake }
-    diff: { type: text }
-    notify: "not a list"
-""",
-        encoding="utf-8",
-    )
-
-    with pytest.raises(ConfigError, match="Watcher 'W' key 'notify': must be a list"):
-        load_config(bad_file)
-
-
-def test_watcher_notify_unknown_plugin_raises_config_error(tmp_path: Path) -> None:
-    """Test that unknown notifier plugin raises ConfigError."""
-    bad_file = tmp_path / "unknown_notifier.yaml"
-    bad_file.write_text(
-        """
-watchers:
-  - name: W
-    source: { type: fake }
-    diff: { type: text }
-    notify:
-      - { type: nonexistent_notifier }
-""",
-        encoding="utf-8",
-    )
-
-    with pytest.raises(
-        ConfigError,
-        match="Watcher 'W' key 'notify': unknown notifier plugin 'nonexistent_notifier'",
-    ):
-        load_config(bad_file)
-
-
 def test_read_yaml_os_error_raises_config_error(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Test that OS errors when opening config file raise ConfigError."""
-    file = tmp_path / "test.yaml"
-    file.write_text("watchers: []", encoding="utf-8")
+    file = _write_config(tmp_path, "watchers: []")
 
     def mock_open(*args: object, **kwargs: object) -> None:
         raise OSError("Permission denied")
@@ -618,251 +246,10 @@ def test_read_yaml_os_error_raises_config_error(
         load_config(file)
 
 
-def test_database_key_not_string_raises_config_error(tmp_path: Path) -> None:
-    """Test that non-string database key raises ConfigError."""
-    file = tmp_path / "bad_db.yaml"
-    file.write_text("database: 12345\nwatchers: []\n", encoding="utf-8")
-    with pytest.raises(ConfigError, match="Config file key 'database' must be a non-empty string"):
-        load_config(file)
-
-
-def test_database_key_empty_raises_config_error(tmp_path: Path) -> None:
-    """Test that whitespace database key raises ConfigError."""
-    file = tmp_path / "empty_db.yaml"
-    file.write_text("database: '   '\nwatchers: []\n", encoding="utf-8")
-    with pytest.raises(ConfigError, match="Config file key 'database' must be a non-empty string"):
-        load_config(file)
-
-
-def test_watcher_name_not_string_raises_config_error(tmp_path: Path) -> None:
-    """Test that non-string watcher name raises ConfigError."""
-    file = tmp_path / "bad_name.yaml"
-    file.write_text("watchers:\n  - name: 123\n", encoding="utf-8")
-    with pytest.raises(ConfigError, match="Watcher key 'name' must be a non-empty string"):
-        load_config(file)
-
-
-def test_watcher_name_empty_raises_config_error(tmp_path: Path) -> None:
-    """Test that whitespace watcher name raises ConfigError."""
-    file = tmp_path / "empty_name.yaml"
-    file.write_text("watchers:\n  - name: '   '\n", encoding="utf-8")
-    with pytest.raises(ConfigError, match="Watcher key 'name' must be a non-empty string"):
-        load_config(file)
-
-
-def test_watcher_interval_not_string_raises_config_error(tmp_path: Path) -> None:
-    """Test that non-string interval raises ConfigError."""
-    file = tmp_path / "bad_interval_type.yaml"
-    file.write_text(
-        """
-watchers:
-  - name: W
-    source: { type: fake }
-    diff: { type: text }
-    interval: 30
-""",
-        encoding="utf-8",
-    )
-    with pytest.raises(ConfigError, match="Watcher 'W' key 'interval': expected text"):
-        load_config(file)
-
-
-def test_source_type_not_string_raises_config_error(tmp_path: Path) -> None:
-    """Test that non-string source type raises ConfigError."""
-    file = tmp_path / "source_type_num.yaml"
-    file.write_text(
-        """
-watchers:
-  - name: W
-    source: { type: 123 }
-    diff: { type: text }
-""",
-        encoding="utf-8",
-    )
-    with pytest.raises(ConfigError, match="Watcher 'W' key 'source': 'type' must be a string"):
-        load_config(file)
-
-
-def test_source_invalid_arguments_raises_config_error(tmp_path: Path) -> None:
-    """Test that unexpected keyword arguments for source raise ConfigError."""
-    file = tmp_path / "source_invalid_arg.yaml"
-    file.write_text(
-        """
-watchers:
-  - name: W
-    source: { type: fake, invalid_kwarg: 123 }
-    diff: { type: text }
-""",
-        encoding="utf-8",
-    )
-    with pytest.raises(ConfigError, match="Watcher 'W' key 'source'"):
-        load_config(file)
-
-
-def test_diff_type_not_string_raises_config_error(tmp_path: Path) -> None:
-    """Test that non-string diff type raises ConfigError."""
-    file = tmp_path / "diff_type_num.yaml"
-    file.write_text(
-        """
-watchers:
-  - name: W
-    source: { type: fake }
-    diff: { type: 123 }
-""",
-        encoding="utf-8",
-    )
-    with pytest.raises(ConfigError, match="Watcher 'W' key 'diff': 'type' must be a string"):
-        load_config(file)
-
-
-def test_diff_invalid_arguments_raises_config_error(tmp_path: Path) -> None:
-    """Test that unexpected keyword arguments for diff raise ConfigError."""
-    file = tmp_path / "diff_invalid_arg.yaml"
-    file.write_text(
-        """
-watchers:
-  - name: W
-    source: { type: fake }
-    diff: { type: text, invalid_param: 123 }
-""",
-        encoding="utf-8",
-    )
-    with pytest.raises(ConfigError, match="Watcher 'W' key 'diff'"):
-        load_config(file)
-
-
-def test_notify_entry_not_a_mapping_raises_config_error(tmp_path: Path) -> None:
-    """Test that non-mapping notify entry raises ConfigError."""
-    file = tmp_path / "notify_not_mapping.yaml"
-    file.write_text(
-        """
-watchers:
-  - name: W
-    source: { type: fake }
-    diff: { type: text }
-    notify:
-      - "just text"
-""",
-        encoding="utf-8",
-    )
-    with pytest.raises(ConfigError, match="Watcher 'W' key 'notify': entry must be a mapping"):
-        load_config(file)
-
-
-def test_notify_entry_missing_type_raises_config_error(tmp_path: Path) -> None:
-    """Test that notify entry without type raises ConfigError."""
-    file = tmp_path / "notify_missing_type.yaml"
-    file.write_text(
-        """
-watchers:
-  - name: W
-    source: { type: fake }
-    diff: { type: text }
-    notify:
-      - { option: 1 }
-""",
-        encoding="utf-8",
-    )
-    with pytest.raises(
-        ConfigError, match="Watcher 'W' key 'notify': entry missing required key 'type'"
-    ):
-        load_config(file)
-
-
-def test_notify_entry_type_not_string_raises_config_error(tmp_path: Path) -> None:
-    """Test that notify entry with non-string type raises ConfigError."""
-    file = tmp_path / "notify_type_num.yaml"
-    file.write_text(
-        """
-watchers:
-  - name: W
-    source: { type: fake }
-    diff: { type: text }
-    notify:
-      - { type: 123 }
-""",
-        encoding="utf-8",
-    )
-    with pytest.raises(ConfigError, match="Watcher 'W' key 'notify': 'type' must be a string"):
-        load_config(file)
-
-
-def test_notify_invalid_arguments_raises_config_error(tmp_path: Path) -> None:
-    """Test that unexpected keyword arguments for notify raise ConfigError."""
-    file = tmp_path / "notify_invalid_arg.yaml"
-    file.write_text(
-        """
-watchers:
-  - name: W
-    source: { type: fake }
-    diff: { type: text }
-    notify:
-      - { type: console, invalid_kw: 1 }
-""",
-        encoding="utf-8",
-    )
-    with pytest.raises(ConfigError, match="Watcher 'W' key 'notify'"):
-        load_config(file)
-
-
-def test_filter_string_invalid_arguments_raises_config_error(tmp_path: Path) -> None:
-    """Test that string filter without required arguments raises ConfigError."""
-    file = tmp_path / "filter_no_arg.yaml"
-    file.write_text(
-        """
-watchers:
-  - name: W
-    source: { type: fake }
-    diff: { type: text }
-    filters:
-      - price_below
-""",
-        encoding="utf-8",
-    )
-    with pytest.raises(ConfigError, match="Watcher 'W' key 'filters': filter 'price_below'"):
-        load_config(file)
-
-
-def test_filter_all_not_a_list_raises_config_error(tmp_path: Path) -> None:
-    """Test that composite all filter with non-list value raises ConfigError."""
-    file = tmp_path / "filter_all_non_list.yaml"
-    file.write_text(
-        """
-watchers:
-  - name: W
-    source: { type: fake }
-    diff: { type: text }
-    filters:
-      - all: "not a list"
-""",
-        encoding="utf-8",
-    )
-    with pytest.raises(ConfigError, match="Watcher 'W' key 'filters': 'all' requires a list"):
-        load_config(file)
-
-
-def test_filter_not_list_multiple_items_raises_config_error(tmp_path: Path) -> None:
-    """Test that not filter with list of multiple entries raises ConfigError."""
-    file = tmp_path / "filter_not_multiple.yaml"
-    file.write_text(
-        """
-watchers:
-  - name: W
-    source: { type: fake }
-    diff: { type: text }
-    filters:
-      - not: [new_items, new_items]
-""",
-        encoding="utf-8",
-    )
-    with pytest.raises(ConfigError, match="Watcher 'W' key 'filters': 'not' requires exactly one"):
-        load_config(file)
-
-
 def test_filter_not_list_of_one_item_works(tmp_path: Path) -> None:
     """Test that not filter with single-element list works."""
-    file = tmp_path / "filter_not_single_list.yaml"
-    file.write_text(
+    file = _write_config(
+        tmp_path,
         """
 watchers:
   - name: W
@@ -871,67 +258,334 @@ watchers:
     filters:
       - not: [new_items]
 """,
-        encoding="utf-8",
     )
     config = load_config(file)
     w = config.watchers[0].build()
     assert len(w.filters) == 1
     assert isinstance(w.filters[0], Not)
+    assert not w.filters[0].matches(Change(kind=ChangeKind.NEW))
+    assert w.filters[0].matches(Change(kind=ChangeKind.REMOVED))
 
 
-def test_filter_leaf_mapping_unknown_filter_raises_config_error(tmp_path: Path) -> None:
-    """Test that single-key mapping with unknown filter name raises ConfigError."""
-    file = tmp_path / "filter_unknown_map.yaml"
-    file.write_text(
-        """
-watchers:
-  - name: W
-    source: { type: fake }
-    diff: { type: text }
-    filters:
-      - unknown_rule: 123
-""",
-        encoding="utf-8",
-    )
-    with pytest.raises(
-        ConfigError, match="Watcher 'W' key 'filters': unknown filter 'unknown_rule'"
-    ):
-        load_config(file)
-
-
-def test_filter_leaf_mapping_invalid_arg_raises_config_error(tmp_path: Path) -> None:
-    """Test that single-key mapping with invalid argument raises ConfigError."""
-    file = tmp_path / "filter_invalid_arg.yaml"
-    file.write_text(
-        """
-watchers:
-  - name: W
-    source: { type: fake }
-    diff: { type: text }
-    filters:
-      - matches: "[unclosed regex"
-""",
-        encoding="utf-8",
-    )
-    with pytest.raises(ConfigError, match="Watcher 'W' key 'filters': filter 'matches'"):
-        load_config(file)
-
-
-def test_filter_entry_invalid_type_raises_config_error(tmp_path: Path) -> None:
-    """Test that filter entry of invalid type raises ConfigError."""
-    file = tmp_path / "filter_number.yaml"
-    file.write_text(
-        """
-watchers:
-  - name: W
-    source: { type: fake }
-    diff: { type: text }
-    filters:
-      - 12345
-""",
-        encoding="utf-8",
-    )
-    with pytest.raises(
-        ConfigError, match="Watcher 'W' key 'filters': filter entry must be a name or mapping"
-    ):
-        load_config(file)
+@pytest.mark.parametrize(
+    ("yaml_text", "match"),
+    [
+        ("watchers: [unclosed", "Invalid YAML"),
+        ("- item1\n- item2", "must contain a mapping"),
+        ("unknown_key: 123\nwatchers: []\n", "unknown key 'unknown_key'"),
+        ("database: test.db", "lacks required key 'watchers'"),
+        ("watchers: not_a_list", "key 'watchers' must be a list"),
+        ("watchers: ['just a string']", "Watcher entry must be a mapping"),
+        (
+            "watchers:\n  - source: { type: fake }\n    diff: { type: text }",
+            "missing required key 'name'",
+        ),
+        ("watchers:\n  - name: 123\n", "Watcher key 'name' must be a non-empty string"),
+        ("watchers:\n  - name: '   '\n", "Watcher key 'name' must be a non-empty string"),
+        (
+            (
+                "watchers:\n"
+                "  - name: Dup\n"
+                "    source: { type: fake }\n"
+                "    diff: { type: text }\n"
+                "  - name: Dup\n"
+                "    source: { type: fake }\n"
+                "    diff: { type: text }\n"
+            ),
+            "Watcher 'Dup' key 'name': duplicate watcher name",
+        ),
+        (
+            (
+                "watchers:\n"
+                "  - name: W\n"
+                "    source: { type: fake }\n"
+                "    diff: { type: text }\n"
+                "    typo_interval: 15m\n"
+            ),
+            "Watcher 'W' has unknown key 'typo_interval'",
+        ),
+        (
+            "watchers:\n  - name: W\n    diff: { type: text }",
+            "Watcher 'W' missing required key 'source'",
+        ),
+        (
+            "watchers:\n  - name: W\n    source: 'not a dict'\n    diff: { type: text }",
+            "Watcher 'W' key 'source': must be a mapping",
+        ),
+        (
+            "watchers:\n  - name: W\n    source: { url: 'http://x.com' }\n    diff: { type: text }",
+            "Watcher 'W' key 'source': missing required key 'type'",
+        ),
+        (
+            "watchers:\n  - name: W\n    source: { type: 123 }\n    diff: { type: text }",
+            "Watcher 'W' key 'source': 'type' must be a string",
+        ),
+        (
+            (
+                "watchers:\n"
+                "  - name: W\n"
+                "    source: { type: nonexistent_source }\n"
+                "    diff: { type: text }"
+            ),
+            "Watcher 'W' key 'source': unknown source plugin 'nonexistent_source'",
+        ),
+        (
+            (
+                "watchers:\n"
+                "  - name: W\n"
+                "    source: { type: fake, invalid_kwarg: 123 }\n"
+                "    diff: { type: text }"
+            ),
+            "Watcher 'W' key 'source'",
+        ),
+        (
+            "watchers:\n  - name: W\n    source: { type: fake }",
+            "Watcher 'W' missing required key 'diff'",
+        ),
+        (
+            "watchers:\n  - name: W\n    source: { type: fake }\n    diff: 'not a dict'",
+            "Watcher 'W' key 'diff': must be a mapping",
+        ),
+        (
+            "watchers:\n  - name: W\n    source: { type: fake }\n    diff: { option: 1 }",
+            "Watcher 'W' key 'diff': missing required key 'type'",
+        ),
+        (
+            "watchers:\n  - name: W\n    source: { type: fake }\n    diff: { type: 123 }",
+            "Watcher 'W' key 'diff': 'type' must be a string",
+        ),
+        (
+            (
+                "watchers:\n"
+                "  - name: W\n"
+                "    source: { type: fake }\n"
+                "    diff: { type: nonexistent_differ }"
+            ),
+            "Watcher 'W' key 'diff': unknown differ plugin 'nonexistent_differ'",
+        ),
+        (
+            (
+                "watchers:\n"
+                "  - name: W\n"
+                "    source: { type: fake }\n"
+                "    diff: { type: text, invalid_param: 123 }"
+            ),
+            "Watcher 'W' key 'diff'",
+        ),
+        (
+            (
+                "watchers:\n"
+                "  - name: W\n"
+                "    source: { type: fake }\n"
+                "    diff: { type: text }\n"
+                "    interval: -5m"
+            ),
+            "Watcher 'W' key 'interval'",
+        ),
+        (
+            (
+                "watchers:\n"
+                "  - name: W\n"
+                "    source: { type: fake }\n"
+                "    diff: { type: text }\n"
+                "    interval: 30"
+            ),
+            "Watcher 'W' key 'interval': Interval must be text",
+        ),
+        (
+            (
+                "watchers:\n"
+                "  - name: W\n"
+                "    source: { type: fake }\n"
+                "    diff: { type: text }\n"
+                "    filters: 'not a list'"
+            ),
+            "Watcher 'W' key 'filters': must be a list",
+        ),
+        (
+            (
+                "watchers:\n"
+                "  - name: W\n"
+                "    source: { type: fake }\n"
+                "    diff: { type: text }\n"
+                "    filters:\n"
+                "      - unknown_filter_name"
+            ),
+            "Watcher 'W' key 'filters': unknown filter 'unknown_filter_name'",
+        ),
+        (
+            (
+                "watchers:\n"
+                "  - name: W\n"
+                "    source: { type: fake }\n"
+                "    diff: { type: text }\n"
+                "    filters:\n"
+                "      - { price_below: 3000, price_above: 1000 }"
+            ),
+            "Watcher 'W' key 'filters': filter entry must have exactly one key",
+        ),
+        (
+            (
+                "watchers:\n"
+                "  - name: W\n"
+                "    source: { type: fake }\n"
+                "    diff: { type: text }\n"
+                "    filters:\n"
+                "      - all: []"
+            ),
+            "Watcher 'W' key 'filters': 'all' requires at least one filter",
+        ),
+        (
+            (
+                "watchers:\n"
+                "  - name: W\n"
+                "    source: { type: fake }\n"
+                "    diff: { type: text }\n"
+                "    filters:\n"
+                "      - price_below"
+            ),
+            "Watcher 'W' key 'filters': filter 'price_below'",
+        ),
+        (
+            (
+                "watchers:\n"
+                "  - name: W\n"
+                "    source: { type: fake }\n"
+                "    diff: { type: text }\n"
+                "    filters:\n"
+                "      - all: 'not a list'"
+            ),
+            "Watcher 'W' key 'filters': 'all' requires a list",
+        ),
+        (
+            (
+                "watchers:\n"
+                "  - name: W\n"
+                "    source: { type: fake }\n"
+                "    diff: { type: text }\n"
+                "    filters:\n"
+                "      - not: [new_items, new_items]"
+            ),
+            "Watcher 'W' key 'filters': 'not' requires exactly one",
+        ),
+        (
+            (
+                "watchers:\n"
+                "  - name: W\n"
+                "    source: { type: fake }\n"
+                "    diff: { type: text }\n"
+                "    filters:\n"
+                "      - unknown_rule: 123"
+            ),
+            "Watcher 'W' key 'filters': unknown filter 'unknown_rule'",
+        ),
+        (
+            (
+                "watchers:\n"
+                "  - name: W\n"
+                "    source: { type: fake }\n"
+                "    diff: { type: text }\n"
+                "    filters:\n"
+                "      - matches: '[unclosed regex'"
+            ),
+            "Watcher 'W' key 'filters': filter 'matches'",
+        ),
+        (
+            (
+                "watchers:\n"
+                "  - name: W\n"
+                "    source: { type: fake }\n"
+                "    diff: { type: text }\n"
+                "    filters:\n"
+                "      - 12345"
+            ),
+            "Watcher 'W' key 'filters': filter entry must be a name or mapping",
+        ),
+        (
+            (
+                "watchers:\n"
+                "  - name: W\n"
+                "    source: { type: fake }\n"
+                "    diff: { type: text }\n"
+                "    notify: 'not a list'"
+            ),
+            "Watcher 'W' key 'notify': must be a list",
+        ),
+        (
+            (
+                "watchers:\n"
+                "  - name: W\n"
+                "    source: { type: fake }\n"
+                "    diff: { type: text }\n"
+                "    notify:\n"
+                "      - 'just text'"
+            ),
+            "Watcher 'W' key 'notify': must be a mapping",
+        ),
+        (
+            (
+                "watchers:\n"
+                "  - name: W\n"
+                "    source: { type: fake }\n"
+                "    diff: { type: text }\n"
+                "    notify:\n"
+                "      - { option: 1 }"
+            ),
+            "Watcher 'W' key 'notify': missing required key 'type'",
+        ),
+        (
+            (
+                "watchers:\n"
+                "  - name: W\n"
+                "    source: { type: fake }\n"
+                "    diff: { type: text }\n"
+                "    notify:\n"
+                "      - { type: 123 }"
+            ),
+            "Watcher 'W' key 'notify': 'type' must be a string",
+        ),
+        (
+            (
+                "watchers:\n"
+                "  - name: W\n"
+                "    source: { type: fake }\n"
+                "    diff: { type: text }\n"
+                "    notify:\n"
+                "      - { type: nonexistent_notifier }"
+            ),
+            "Watcher 'W' key 'notify': unknown notifier plugin 'nonexistent_notifier'",
+        ),
+        (
+            (
+                "watchers:\n"
+                "  - name: W\n"
+                "    source: { type: fake }\n"
+                "    diff: { type: text }\n"
+                "    notify:\n"
+                "      - { type: console, invalid_kw: 1 }"
+            ),
+            "Watcher 'W' key 'notify'",
+        ),
+        (
+            "database: 12345\nwatchers: []\n",
+            "Config file key 'database' must be a non-empty string",
+        ),
+        ("database: ''\nwatchers: []\n", "Config file key 'database' must be a non-empty string"),
+        (
+            (
+                "watchers:\n"
+                "  - name: W\n"
+                "    source: { type: fake }\n"
+                "    diff: { type: text }\n"
+                "    filters:\n"
+                "      - 123: 456"
+            ),
+            "Watcher 'W' key 'filters': filter name must be a string",
+        ),
+    ],
+)
+def test_invalid_config_raises_config_error(tmp_path: Path, yaml_text: str, match: str) -> None:
+    """Test that invalid config files raise ConfigError with descriptive messages."""
+    config_file = _write_config(tmp_path, yaml_text)
+    with pytest.raises(ConfigError, match=match):
+        load_config(config_file)
