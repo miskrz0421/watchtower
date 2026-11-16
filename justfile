@@ -9,7 +9,7 @@ default:
 install:
     uv sync
 
-# Run the tests with coverage; extra arguments go to pytest, e.g. `just test -k cli`
+# Run the tests; extra arguments go to pytest, e.g. `just test tests/test_cli.py` or `just test -k cli`
 test *args:
     uv run pytest {{ args }}
 
@@ -31,11 +31,11 @@ check:
     uv run ruff check .
     uv run ruff format --check .
     uv run mypy
-    uv run pytest
+    uv run pytest --cov=watchtower
 
-# Write the HTML coverage report to .artifacts/coverage/html
+# Run the tests with coverage and write the HTML report to .artifacts/coverage/html
 coverage:
-    uv run pytest --cov-report=html
+    uv run pytest --cov=watchtower --cov-report=html
 
 # Run the app, e.g. `just watchtower run examples/config.yaml`
 watchtower *args:

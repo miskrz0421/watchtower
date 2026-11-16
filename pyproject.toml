@@ -55,7 +55,7 @@ packages = ["src/watchtower", "examples/fake_listings"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 cache_dir = ".artifacts/pytest"
-addopts = "-ra --strict-markers --cov"
+addopts = "-ra --strict-markers"
 markers = [
     "gui: tests that need PySide6 and a display (run with: uv run pytest -m gui)",
     "network: tests that hit a real local HTTP server",
