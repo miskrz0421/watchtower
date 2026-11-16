@@ -30,11 +30,11 @@ Every developer command is a recipe in the [`justfile`](justfile); `just` alone 
 
 ```bash
 just install               # uv sync: the project + dev tools (dev includes PySide6 for pytest-qt)
-just test                  # tests + coverage (fails below 95%)
+just test                  # the tests; `just test tests/test_cli.py` runs one file
 just lint                  # report lint problems
 just format                # fix formatting and auto-fixable lint problems
 just typecheck             # mypy
-just check                 # everything CI runs; do this before pushing
+just check                 # everything CI runs, tests with coverage (fails below 95%)
 just serve                 # fake listings website for demos
 just watchtower plugins    # the app; arguments are passed on
 ```

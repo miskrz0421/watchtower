@@ -216,6 +216,10 @@ PR that makes the decision.
   - The tests measure coverage and fail below 95%. The number is just under what we had when
     the rule was added (97%); it is raised as coverage grows and never lowered.
     Lines that only `raise NotImplementedError` (stubs for a later milestone) are not counted.
+  - Note (M3): coverage is measured by `just check` and `just coverage` (`--cov=watchtower`),
+    not by every pytest run. A bare `--cov` in pytest's `addopts` took the first argument as its
+    value, so `just test tests/test_cli.py` ran every test; and the floor would fail any run of
+    a single file anyway.
 - Alternatives: a Makefile (needs tabs, awkward on Windows, built for files rather than
   commands); only `uv run ...` lines in the README (nothing keeps them up to date); a Python
   task runner such as poethepoet (one more dependency inside the project, less known); a 100%
