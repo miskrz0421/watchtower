@@ -312,3 +312,24 @@ PR that makes the decision.
   observer, expected failures are visible only at DEBUG, so the CLI always attaches a
   `LoggingObserver` to `run`. `stop()` called from another thread takes effect after the current
   sleep; M5 can replace the sleep with an event wait if that is too slow.
+
+## ADR-021: History storage schema and streaming generator queries
+- Status: accepted · M3
+- Context: every executed check and detected change must be preserved for history inspection,
+  reporting, and the GUI. Reading back large tables could consume excessive memory.
+- Decision:
+  - `HistoryStore` creates `changes` and `checks` tables in the same SQLite database file as
+    `SnapshotStore`.
+  - Like `SnapshotStore`, it opens a short-lived connection per operation for thread safety
+    (ADR-013).
+  - `changes()` and `checks()` are generator methods that yield `ChangeRecord` and `CheckRecord`
+    instances row by row ordered chronologically (`id ASC`), optionally filtered by `watcher_name`.
+  - `HistoryRecorder` attaches to `EventBus` (Observer pattern, ADR-006, ADR-018), subscribing to
+    `CheckCompleted` and `ChangeDetected` to persist records automatically.
+- Alternatives: separate SQLite database files (complicates configuration and backup); returning
+  eager lists (loads the entire historical log into memory at once); storing raw JSON like
+  snapshots (prevents relational queries and filtering by watcher in SQL).
+- Consequences: all persistent state resides in a single database file. Streaming queries scale to
+  large histories without memory spikes. Iterating a generator holds the SQLite connection open,
+  keeping a read lock until consumption finishes; in M5 (background engine thread) callers should
+  consume rows promptly to avoid delaying writers.
