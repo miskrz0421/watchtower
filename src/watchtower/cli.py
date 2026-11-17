@@ -144,6 +144,39 @@ def _run_command(args: argparse.Namespace) -> int:
     return 0
 
 
+def _gui_command(args: argparse.Namespace) -> int:
+    """Run the watchers of a config file in the tray app until Quit.
+
+    Args:
+        args: Parsed arguments with the `config` path.
+
+    Returns:
+        The exit code of the app.
+
+    Raises:
+        WatchtowerError: If the config or the database cannot be used.
+    """
+    # Imported here, so the other commands work without the gui extra (ADR-003).
+    from watchtower.gui import run_gui
+
+    return run_gui(args.config)
+
+
+def _report_command(args: argparse.Namespace) -> int:
+    """Save charts of the history of a config's database as PNG files.
+
+    Args:
+        args: Parsed arguments with the `config` path and the `out` folder.
+
+    Returns:
+        0 when the charts are saved.
+
+    Raises:
+        WatchtowerError: If the config has no database or it cannot be read.
+    """
+    raise NotImplementedError
+
+
 def _plugins_command(args: argparse.Namespace) -> int:
     """Print the names of the registered plugins, by kind.
 
@@ -179,6 +212,17 @@ def _build_parser() -> argparse.ArgumentParser:
     run_parser = subparsers.add_parser("run", help="Run the watchers of a config until Ctrl+C")
     run_parser.add_argument("config", type=Path, help="YAML config file")
     run_parser.set_defaults(handler=_run_command)
+
+    gui_parser = subparsers.add_parser("gui", help="Run the watchers of a config in the tray app")
+    gui_parser.add_argument("config", type=Path, help="YAML config file")
+    gui_parser.set_defaults(handler=_gui_command)
+
+    report_parser = subparsers.add_parser("report", help="Save charts of a config's history")
+    report_parser.add_argument("config", type=Path, help="YAML config file with a database")
+    report_parser.add_argument(
+        "--out", type=Path, default=Path("reports_out"), help="folder for the PNG files"
+    )
+    report_parser.set_defaults(handler=_report_command)
 
     plugins_parser = subparsers.add_parser("plugins", help="List the registered plugins")
     plugins_parser.set_defaults(handler=_plugins_command)

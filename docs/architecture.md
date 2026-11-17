@@ -41,9 +41,10 @@ src/watchtower/
 ├── config/          _loader (YAML loader), _intervals (interval parsing), _filters (filter builder)
 ├── core/            _watcher, _builder (Builder), _scheduler (Mediator), _clock, _logging_observer,
 │                    _states (State), _commands, _retry
-├── reports/         pandas analysis + matplotlib charts
-└── gui/             app, worker thread, EngineBridge, tray, main window
-    └── tabs/        changes, watchers, reports, log
+├── reports/         _tables (pandas), _charts (matplotlib)
+└── gui/             _app (run_gui), _engine (EngineThread), _bridge (EngineBridge), _tray,
+    │                _main_window
+    └── tabs/        _watchers, _changes, _reports, _log
 
 What is public and what is private is decided in [ADR-015](decisions.md).
 
@@ -110,9 +111,12 @@ Each thread opens its own connection (`sqlite3` connections must not be shared a
 - The **engine** (scheduler + watchers) runs in a worker `QThread`.
 - **Engine → UI:** `EngineBridge` lives in the GUI thread and re-emits bus events as Qt signals,
   which Qt delivers to the GUI thread as queued calls. Widgets are only ever touched from the
-  GUI thread.
-- **UI → Engine:** buttons put command objects (`Pause`, `Resume`, `CheckNow`, `ReloadConfig`)
-  on a thread-safe `queue.Queue`; the scheduler applies them on its next tick (Command pattern).
+  GUI thread, so only methods of widgets and models are connected to the signals (ADR-024).
+- **UI → Engine:** buttons call `Scheduler.submit` with a command (`Pause`, `Resume`,
+  `CheckNow`, `ReloadConfig`); it goes on a thread-safe `queue.SimpleQueue` and the scheduler
+  applies it at the start of its next `run_pending` (Command pattern, ADR-023).
+- **Desktop notifications:** the `desktop` notifier uses the `desktop-notifier` package, not Qt,
+  so it works the same with and without the GUI (ADR-024).
 - Headless mode (`watchtower run`) uses the same engine in the main thread and never imports Qt.
 
 ## Design patterns map

@@ -16,9 +16,9 @@ history and reports) or **headless** from the command line.
 |---|---|---|
 | M1 | Foundations | ✅ done |
 | M2 | Real data and memory | ✅ done |
-| M3 | Config and filters | 🚧 in progress |
-| M4 | Robustness and real notifications | ⏳ planned |
-| M5 | Desktop app | ⏳ planned |
+| M3 | Config and filters | ✅ done |
+| M4 | Robustness and real notifications | 🚧 in progress |
+| M5 | Desktop app | 🚧 in progress |
 | M6 | Analytics and final demo | ⏳ planned |
 
 ## Quick start
@@ -29,7 +29,7 @@ Requirements: Python 3.12+, [uv](https://docs.astral.sh/uv/) and
 Every developer command is a recipe in the [`justfile`](justfile); `just` alone lists them:
 
 ```bash
-just install               # uv sync: the project + dev tools (dev includes PySide6 for pytest-qt)
+just install               # uv sync: the project + dev tools (incl. PySide6, pandas, matplotlib)
 just test                  # the tests; `just test tests/test_cli.py` runs one file
 just lint                  # report lint problems
 just format                # fix formatting and auto-fixable lint problems
@@ -37,10 +37,12 @@ just typecheck             # mypy
 just check                 # everything CI runs, tests with coverage (fails below 95%)
 just clean                 # remove tool caches, coverage data and bytecode
 just serve                 # fake listings website for demos
+just gui                   # the tray app on examples/config.yaml
 just watchtower plugins    # the app; arguments are passed on
 ```
 
-`uv sync --all-extras` also installs the reports extra (pandas, matplotlib).
+The dev tools already include the `gui` and `reports` extras; `uv sync --no-dev --all-extras`
+installs only the app with both.
 
 The app's own commands are entry points declared under `[project.scripts]` in `pyproject.toml`
 (added milestone by milestone):
@@ -50,7 +52,7 @@ uv run watchtower check config.yaml    # check every watcher once      (M3)
 uv run watchtower run config.yaml      # headless scheduler            (M3)
 uv run watchtower plugins              # list registered plugins       (M3)
 uv run watchtower gui config.yaml      # tray app                      (M5)
-uv run watchtower report --out out/    # export charts                 (M6)
+uv run watchtower report config.yaml   # charts as PNG files           (M6)
 uv run watchtower-fake-listings        # fake listings website for demos
 ```
 

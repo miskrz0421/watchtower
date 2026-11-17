@@ -45,6 +45,10 @@ PR that makes the decision.
   `uv run pytest` works with no extra steps.
 - Consequences: Qt is always present in development, so a missing package will not catch an
   accidental Qt import in the core; code review has to.
+- Note (M4): pandas, matplotlib and pandas-stubs joined the `dev` group for the same reason:
+  mypy and the tests of `reports/` need them. `watchtower.gui` and `watchtower.reports` are
+  imported only inside the `gui` and `report` CLI commands, so the other commands still run
+  without the extras.
 
 ## ADR-004: First run is a baseline
 - Status: accepted · M1
@@ -366,3 +370,65 @@ PR that makes the decision.
   failing watcher (one broken website would hide the results of the others).
 - Consequences: every demo needs a config file. `check` without a `database` is only useful to
   test that a config loads and its sources answer.
+
+## ADR-023: Watcher states and commands
+- Status: accepted · M4
+- Context: a watcher whose website is down is retried every interval forever, and nobody is
+  told. The M5 window must pause, resume and check a watcher while the engine runs in another
+  thread, and the Watchers tab has to show each watcher's state.
+- Decision:
+  - Each state is an object (State pattern, `core/_states.py`): `Active`, `Paused`,
+    `Backoff(failures)` and `Disabled`. The scheduler keeps one per watcher. After every check it
+    replaces it with `after_success()` or `after_failure()`, and `delay(interval)` says when the
+    next check is due (None: not checked at all). `kind` is the `WatcherState` that goes into
+    `WatcherStateChanged`, which the scheduler publishes on every transition.
+  - `Backoff` waits the interval doubled once per failure, at most one hour; the fifth failure in
+    a row gives `Disabled`, a success gives `Active`. `Paused` and `Disabled` are not checked and
+    only `Resume` brings them back.
+  - Other threads talk to the scheduler only through commands: frozen dataclasses `Pause`,
+    `Resume`, `CheckNow` (each with a `watcher_name`) and `ReloadConfig`. `Scheduler.submit` puts
+    them on a `queue.SimpleQueue`; `run_pending` applies every queued command first, in the
+    scheduler's own thread. `Pause` gives `Paused`; `Resume` gives `Active` and makes the watcher
+    due at once; `CheckNow` makes it due at once in any state (a paused watcher is checked once and
+    stays paused). A command for a name that is not scheduled is logged and ignored.
+  - `Scheduler.statuses()` returns a frozen `WatcherStatus` per watcher. The GUI reads it once,
+    before the engine thread starts, and then follows `WatcherStateChanged` and `CheckCompleted`.
+- Alternatives: a `WatcherState` enum with `if`/`elif` in the scheduler (the rules of every state
+  in one function, and a new state touches all of it); the GUI calling `scheduler.pause(name)`
+  directly (two threads changing the same dictionaries, so locks everywhere); the state inside
+  `Watcher` (the watcher would decide its own schedule, against ADR-018).
+- Consequences: only the scheduler's thread changes the schedule and the states, so they need no
+  lock. A command waits until the loop wakes up, so `run_forever` must stop sleeping when a command
+  arrives; the states PR replaces the sleep with a wait that `submit` and `stop` interrupt (the
+  M5 change ADR-020 mentions). Tests submit a command and call `run_pending` with a `FakeClock`.
+
+## ADR-024: GUI threading and the bridge contract
+- Status: accepted · M5
+- Context: a check can block on the network for seconds, Qt widgets may only be used from the GUI
+  thread, and the core must not import Qt (ADR-003). Three people build the tabs in parallel, so
+  what each tab receives has to be fixed first.
+- Decision:
+  - The scheduler runs in an `EngineThread` (`QThread`); the GUI thread only runs the Qt event loop.
+  - Engine → GUI: `EngineBridge` is a `QObject` created in the GUI thread. It attaches to the bus
+    like any other observer (ADR-018) and re-emits the events unchanged as the signals
+    `check_completed`, `change_detected`, `fetch_failed` and `state_changed`. They are emitted in
+    the engine thread; Qt queues each call to the thread of the receiving `QObject`, so only
+    methods of widgets and models are connected to them, never lambdas or plain functions (those
+    would run in the engine thread).
+  - GUI → engine: only `Scheduler.submit` (ADR-023).
+  - Desktop notifications: `DesktopNotifier` is an ordinary notifier plugin (`desktop`) built on
+    the cross-platform `desktop-notifier` package, without Qt. It works the same in
+    `watchtower run` and in the tray app, so the GUI does not wire it up.
+  - `MainWindow(bridge, scheduler, history)` gives each tab only what it needs: Watchers gets the
+    bridge and the scheduler, Changes the bridge and the history, Reports the history. `history`
+    is None when the config has no database.
+- Alternatives: a `QTimer` calling `run_pending` in the GUI thread (a slow website freezes the
+  window); watchers emitting Qt signals themselves (the core would import Qt); one signal carrying
+  any event (every tab would check types, and nothing would say which events the GUI uses);
+  desktop messages through the tray icon's `showMessage`, as first written here (the GUI would
+  have to connect every `desktop` notifier to a bridge signal, and outside the GUI the notifier
+  could only fail).
+- Consequences: tabs are built and tested without the engine: a test emits the bridge's signals
+  or calls a model's methods directly. Reading the history from the GUI thread is safe because
+  `HistoryStore` opens a connection per call (ADR-021). `desktop-notifier` is one more dependency;
+  it goes into an optional extra and the `dev` group, not into the core (ADR-003).
