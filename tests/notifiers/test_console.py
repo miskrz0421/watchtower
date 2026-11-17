@@ -1,4 +1,4 @@
-"""Tests for Notifiers and ConsoleNotifier."""
+"""Tests for ConsoleNotifier."""
 
 from __future__ import annotations
 
