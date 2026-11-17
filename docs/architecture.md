@@ -28,26 +28,26 @@ Qt**: the GUI is just another subscriber on the event bus.
 ```
 src/watchtower/
 ├── __init__.py      public API: Watcher, models, events, plugin base classes, registry
-├── models.py        Item, Snapshot, Change, ChangeKind, ChangeEvent
-├── errors.py        WatchtowerError → SourceError, ParseError, NotifyError, StorageError, ConfigError
-├── registry.py      @register_* decorators, create(kind, name, **params)
-├── events.py        event dataclasses + EventBus
-├── cli.py           argparse: check / run / plugins / gui / report
-├── sources/         base (Template Method), fake, file, rss, webpage, json_api, http, parsing
-├── storage/         SnapshotStore (Memento), HistoryStore, HistoryRecorder
-├── diffs/           base (Strategy), text, items
-├── filters/         base (Specification + Composite: And/Or/Not), built-in filters
-├── notifiers/       base (Adapter), console, discord, desktop, decorators
-├── config/          YAML loader, interval parsing
-├── core/            watcher, builder (Builder), scheduler (Mediator), clock, logging observer,
-│                    states (State), commands, retry
+├── _models.py       Item, Snapshot, Change, ChangeKind, ChangeEvent (private)
+├── _errors.py       WatchtowerError → SourceError, ParseError, NotifyError, StorageError, ConfigError (private)
+├── _registry.py     @register_* decorators, create(kind, name, **params) (private)
+├── _events.py       event dataclasses + EventBus (private)
+├── cli.py           argparse CLI entry point: check / run / plugins / gui / report
+├── sources/         _base (Template Method), _fake, _file, _rss, _webpage, _json_api, _http, _parsing
+├── storage/         _snapshots (Memento), _history, _recorder
+├── diffs/           _base (Strategy), _text, _items
+├── filters/         _base (Specification + Composite: And/Or/Not), _builtin
+├── notifiers/       _base (Adapter), _console, _discord, _desktop, _decorators
+├── config/          _loader (YAML loader), _intervals (interval parsing), _filters (filter builder)
+├── core/            _watcher, _builder (Builder), _scheduler (Mediator), _clock, _logging_observer,
+│                    _states (State), _commands, _retry
 ├── reports/         pandas analysis + matplotlib charts
 └── gui/             app, worker thread, EngineBridge, tray, main window
     └── tabs/        changes, watchers, reports, log
 
 What is public and what is private is decided in [ADR-015](decisions.md).
 
-tests/               one test module per area (test_sources.py, test_diffs.py, ...)
+tests/               mirrors the package layout (core/, sources/, diffs/, ...)
 examples/            fake_listings server, example config.yaml
 docs/                this documentation
 ```
@@ -119,18 +119,18 @@ Each thread opens its own connection (`sqlite3` connections must not be shared a
 
 | Pattern | Where |
 |---|---|
-| Template Method | `sources/base.py`: `snapshot()` → `fetch()` + `parse()` |
+| Template Method | `sources/_base.py`: `snapshot()` → `fetch()` + `parse()` |
 | Memento | `storage/`: `SnapshotStore` |
-| Proxy | `sources/http.py`: polite + caching HTTP |
-| Factory / Registry | `registry.py`, used by the YAML loader |
+| Proxy | `sources/_http.py`: polite + caching HTTP |
+| Factory / Registry | `_registry.py`, used by the YAML loader |
 | Strategy | `diffs/`: TextDiff, ItemDiff |
 | Specification + Composite | `filters/`: `&`, `\|`, `~` → And/Or/Not |
-| Builder | `core/builder.py`: `WatcherBuilder`, used by the YAML loader |
+| Builder | `core/_builder.py`: `WatcherBuilder`, used by the YAML loader |
 | Adapter | `notifiers/`: one interface over Discord / tray / console |
-| Decorator | `notifiers/decorators.py`: RateLimited, QuietHours |
-| Observer | `events.py`: EventBus; `gui/bridge.py` |
-| State | `core/states.py` |
-| Mediator | `core/scheduler.py` |
-| Command | `core/commands.py` |
+| Decorator | `notifiers/_decorators.py`: RateLimited, QuietHours |
+| Observer | `_events.py`: EventBus; `gui/_bridge.py` |
+| State | `core/_states.py` |
+| Mediator | `core/_scheduler.py` |
+| Command | `core/_commands.py` |
 | Chain of Responsibility (simplified) | retry → Backoff → Disabled + alert |
 | Model–View | `gui/tabs/*`: `QAbstractTableModel` subclasses |

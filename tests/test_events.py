@@ -7,8 +7,11 @@ from datetime import UTC, datetime
 
 import pytest
 
-from watchtower.events import (
+from watchtower import (
+    Change,
     ChangeDetected,
+    ChangeEvent,
+    ChangeKind,
     CheckCompleted,
     Event,
     EventBus,
@@ -16,7 +19,6 @@ from watchtower.events import (
     WatcherState,
     WatcherStateChanged,
 )
-from watchtower.models import Change, ChangeEvent, ChangeKind
 
 
 def test_event_bus_publish_and_subscribe() -> None:

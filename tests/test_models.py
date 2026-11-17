@@ -6,8 +6,17 @@ from datetime import UTC, datetime
 
 import pytest
 
-from watchtower.errors import NotifyError, ParseError, SourceError, WatchtowerError
-from watchtower.models import Change, ChangeEvent, ChangeKind, Item, Snapshot
+from watchtower import (
+    Change,
+    ChangeEvent,
+    ChangeKind,
+    Item,
+    NotifyError,
+    ParseError,
+    Snapshot,
+    SourceError,
+    WatchtowerError,
+)
 
 
 def test_item_equality_and_hashing() -> None:

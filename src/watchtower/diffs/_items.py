@@ -1,0 +1,49 @@
+"""Item-level differ comparing snapshots by item key."""
+
+from __future__ import annotations
+
+from watchtower._models import Change, ChangeKind, Snapshot
+from watchtower._registry import register_differ
+from watchtower.diffs._base import Differ
+
+
+@register_differ("items")
+class ItemDiff(Differ):
+    """Detects new, removed and changed items by comparing their keys."""
+
+    def diff(self, old: Snapshot | None, new: Snapshot) -> list[Change]:
+        """Compute item-level changes between two snapshots.
+
+        Returns an empty list if old is None (see ADR-004). A changed item
+        keeps its previous version in `Change.before`.
+
+        Args:
+            old: The previous snapshot, or None if first run.
+            new: The current snapshot.
+
+        Returns:
+            One Change of kind NEW, REMOVED or CHANGED per differing item.
+        """
+        if old is None:
+            return []
+
+        old_by_key = {item.key: item for item in old.items}
+        new_by_key = {item.key: item for item in new.items}
+
+        changes: list[Change] = []
+        for key, item in new_by_key.items():
+            before = old_by_key.get(key)
+            if before == item:
+                continue
+            if before is None:
+                change = Change(kind=ChangeKind.NEW, item=item)
+            else:
+                change = Change(kind=ChangeKind.CHANGED, item=item, before=before)
+            changes.append(change)
+
+        changes.extend(
+            Change(kind=ChangeKind.REMOVED, item=item)
+            for key, item in old_by_key.items()
+            if key not in new_by_key
+        )
+        return changes

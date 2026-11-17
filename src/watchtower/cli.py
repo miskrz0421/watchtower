@@ -7,17 +7,10 @@ import logging
 import sys
 from pathlib import Path
 
-from watchtower.config.loader import Config, load_config
-from watchtower.core.logging_observer import LoggingObserver
-from watchtower.core.scheduler import Scheduler
-from watchtower.core.watcher import Watcher
-from watchtower.errors import WatchtowerError
-from watchtower.events import EventBus
-from watchtower.models import ChangeEvent
-from watchtower.registry import list_plugins
-from watchtower.storage.history import HistoryStore
-from watchtower.storage.recorder import HistoryRecorder
-from watchtower.storage.snapshots import SnapshotStore
+from watchtower import ChangeEvent, EventBus, WatchtowerError, list_plugins
+from watchtower.config import Config, load_config
+from watchtower.core import LoggingObserver, Scheduler, Watcher
+from watchtower.storage import HistoryRecorder, HistoryStore, SnapshotStore
 
 _LOG_FORMAT = "%(asctime)s %(levelname)s %(message)s"
 

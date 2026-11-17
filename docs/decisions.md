@@ -175,7 +175,7 @@ PR that makes the decision.
   passes only that text.
 
 ## ADR-015: What is public and how private names are marked
-- Status: accepted · after M2
+- Status: accepted · after M2 (amended · M3)
 - Context: the top-level package re-exported 44 names, including test helpers (`FakeSource`),
   serialisation details (`ItemDict`) and every built-in plugin, and module-level names such as
   `logger` looked public. A reader could not tell what a user of the framework may rely on.
@@ -196,6 +196,12 @@ PR that makes the decision.
   is stable); no top-level exports (every user needs to know the internal layout).
 - Consequences: importing `watchtower` still imports the plugin packages, so built-in plugins
   are registered. A new public name has to be added to an `__all__` on purpose.
+- Amended (M3): after the M3 review, every module file except `cli.py` gets a leading
+  underscore (`_models.py`, `storage/_snapshots.py`), so a package can only be used through
+  the `__all__` of its `__init__.py`; `watchtower.storage.snapshots` no longer exists. `cli.py`
+  keeps its name because `[project.scripts]` points at it. Inside the package, modules still
+  import from the `_` module that defines a name, which keeps imports free of cycles. Tests
+  import only from the package roots, and `tests/test_public_api.py` checks every `__all__`.
 
 ## ADR-016: One way to run things, one place for generated files, a coverage floor
 - Status: accepted · after M2

@@ -5,13 +5,14 @@ from __future__ import annotations
 import logging
 import socket
 from pathlib import Path
+from textwrap import dedent
 
 import pytest
 
 from conftest import SAMPLE_LISTINGS, FakeListings
 from watchtower.cli import main
-from watchtower.core.scheduler import Scheduler
-from watchtower.storage.history import HistoryStore
+from watchtower.core import Scheduler
+from watchtower.storage import HistoryStore
 
 
 def _write_config(folder: Path, text: str) -> Path:
@@ -27,13 +28,13 @@ def _file_config(folder: Path, watched: Path, database: str | None = "watchtower
     return _write_config(
         folder,
         database_line
-        + f"""
-watchers:
-  - name: Notes
-    source: {{ type: file, path: "{watched}" }}
-    diff: {{ type: text }}
-    notify: [{{ type: console }}]
-""",
+        + dedent(f"""
+            watchers:
+              - name: Notes
+                source: {{ type: file, path: "{watched.as_posix()}" }}
+                diff: {{ type: text }}
+                notify: [{{ type: console }}]
+            """),
     )
 
 
@@ -41,25 +42,25 @@ def _flats_config(folder: Path, base_url: str) -> Path:
     """Write the demo config: new flats under 3000 without agencies."""
     return _write_config(
         folder,
-        f"""
-database: watchtower.db
-watchers:
-  - name: Cheap flats
-    source:
-      type: webpage
-      url: "{base_url}/listings"
-      selector: ".offer"
-      title_selector: ".title"
-      price_selector: ".price"
-      key_attribute: "data-id"
-    interval: 30s
-    diff: {{ type: items }}
-    filters:
-      - new_items
-      - price_below: 3000
-      - not: {{ text_contains: agency }}
-    notify: [{{ type: console }}]
-""",
+        dedent(f"""
+            database: watchtower.db
+            watchers:
+              - name: Cheap flats
+                source:
+                  type: webpage
+                  url: "{base_url}/listings"
+                  selector: ".offer"
+                  title_selector: ".title"
+                  price_selector: ".price"
+                  key_attribute: "data-id"
+                interval: 30s
+                diff: {{ type: items }}
+                filters:
+                  - new_items
+                  - price_below: 3000
+                  - not: {{ text_contains: agency }}
+                notify: [{{ type: console }}]
+            """),
     )
 
 
@@ -134,15 +135,15 @@ def test_check_goes_on_after_a_failing_watcher(
     watched.write_text("contents\n", encoding="utf-8")
     config = _write_config(
         tmp_path,
-        f"""
-watchers:
-  - name: Missing
-    source: {{ type: file, path: "{tmp_path / "missing.txt"}" }}
-    diff: {{ type: text }}
-  - name: Notes
-    source: {{ type: file, path: "{watched}" }}
-    diff: {{ type: text }}
-""",
+        dedent(f"""
+            watchers:
+              - name: Missing
+                source: {{ type: file, path: "{(tmp_path / "missing.txt").as_posix()}" }}
+                diff: {{ type: text }}
+              - name: Notes
+                source: {{ type: file, path: "{watched.as_posix()}" }}
+                diff: {{ type: text }}
+            """),
     )
 
     assert main(["check", str(config)]) == 1

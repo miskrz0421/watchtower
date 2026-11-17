@@ -1,13 +1,13 @@
 """Built-in data sources for Watchtower."""
 
-from watchtower.sources.base import Source
-from watchtower.sources.fake import FakeSource
-from watchtower.sources.file import FileSource
-from watchtower.sources.http import HttpSource
-from watchtower.sources.json_api import JSONAPISource
-from watchtower.sources.parsing import parse_price
-from watchtower.sources.rss import RSSSource
-from watchtower.sources.webpage import WebPageSource
+from watchtower.sources._base import Source
+from watchtower.sources._fake import FakeSource
+from watchtower.sources._file import FileSource
+from watchtower.sources._http import HttpSource
+from watchtower.sources._json_api import JSONAPISource
+from watchtower.sources._parsing import parse_price
+from watchtower.sources._rss import RSSSource
+from watchtower.sources._webpage import WebPageSource
 
 __all__ = [
     "FakeSource",
