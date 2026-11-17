@@ -40,7 +40,7 @@ src/watchtower/
 ├── notifiers/       _base (Adapter), _console, _discord, _desktop, _decorators
 ├── config/          _loader (YAML loader), _intervals (interval parsing), _filters (filter builder)
 ├── core/            _watcher, _builder (Builder), _scheduler (Mediator), _clock, _logging_observer,
-│                    states (State), commands, retry
+│                    _states (State), _commands, _retry
 ├── reports/         pandas analysis + matplotlib charts
 └── gui/             app, worker thread, EngineBridge, tray, main window
     └── tabs/        changes, watchers, reports, log
@@ -119,18 +119,18 @@ Each thread opens its own connection (`sqlite3` connections must not be shared a
 
 | Pattern | Where |
 |---|---|
-| Template Method | `sources/base.py`: `snapshot()` → `fetch()` + `parse()` |
+| Template Method | `sources/_base.py`: `snapshot()` → `fetch()` + `parse()` |
 | Memento | `storage/`: `SnapshotStore` |
-| Proxy | `sources/http.py`: polite + caching HTTP |
-| Factory / Registry | `registry.py`, used by the YAML loader |
+| Proxy | `sources/_http.py`: polite + caching HTTP |
+| Factory / Registry | `_registry.py`, used by the YAML loader |
 | Strategy | `diffs/`: TextDiff, ItemDiff |
 | Specification + Composite | `filters/`: `&`, `\|`, `~` → And/Or/Not |
-| Builder | `core/builder.py`: `WatcherBuilder`, used by the YAML loader |
+| Builder | `core/_builder.py`: `WatcherBuilder`, used by the YAML loader |
 | Adapter | `notifiers/`: one interface over Discord / tray / console |
-| Decorator | `notifiers/decorators.py`: RateLimited, QuietHours |
-| Observer | `events.py`: EventBus; `gui/bridge.py` |
-| State | `core/states.py` |
-| Mediator | `core/scheduler.py` |
-| Command | `core/commands.py` |
+| Decorator | `notifiers/_decorators.py`: RateLimited, QuietHours |
+| Observer | `_events.py`: EventBus; `gui/_bridge.py` |
+| State | `core/_states.py` |
+| Mediator | `core/_scheduler.py` |
+| Command | `core/_commands.py` |
 | Chain of Responsibility (simplified) | retry → Backoff → Disabled + alert |
 | Model–View | `gui/tabs/*`: `QAbstractTableModel` subclasses |
