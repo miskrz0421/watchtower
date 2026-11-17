@@ -9,6 +9,7 @@ from datetime import datetime
 from watchtower._errors import WatchtowerError
 from watchtower.core._clock import Clock, SystemClock
 from watchtower.core._commands import CheckNow, Command, Pause, ReloadConfig, Resume
+from watchtower.core._states import WatcherStatus
 from watchtower.core._watcher import Watcher
 
 _logger = logging.getLogger(__name__)
@@ -58,6 +59,17 @@ class Scheduler:
             command: Command to apply.
         """
         self._commands.put(command)
+
+    def statuses(self) -> list[WatcherStatus]:
+        """Return the state of every watcher, in the order they were added.
+
+        The GUI calls it once, before the scheduler starts in its own thread,
+        and then follows the events (see ADR-023).
+
+        Returns:
+            One status per watcher.
+        """
+        raise NotImplementedError
 
     def next_due(self) -> datetime | None:
         """Return when the next check is due.

@@ -29,6 +29,7 @@ gui = ["pyside6>=6.7"]
 reports = ["pandas>=2.2", "matplotlib>=3.9"]
 
 [dependency-groups]
+# The extras are here too: pytest-qt, mypy and the tests of gui/ and reports/ need them (ADR-003).
 dev = [
     "pytest>=8.0",
     "pytest-cov>=5.0",
@@ -36,7 +37,10 @@ dev = [
     "ruff>=0.6",
     "mypy>=1.11",
     "types-PyYAML",
+    "pandas-stubs",
     "pyside6>=6.7",
+    "pandas>=2.2",
+    "matplotlib>=3.9",
 ]
 
 [build-system]

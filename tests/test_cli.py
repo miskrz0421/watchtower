@@ -195,6 +195,21 @@ def test_run_checks_until_ctrl_c(
     assert len(list(HistoryStore(tmp_path / "watchtower.db").checks())) == 1
 
 
+def test_gui_starts_the_app_with_the_config(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test that gui passes the config path to run_gui and returns its exit code."""
+    started: list[Path] = []
+
+    def fake_run_gui(config_path: Path) -> int:
+        """Remember the config path instead of opening a window."""
+        started.append(config_path)
+        return 3
+
+    monkeypatch.setattr("watchtower.gui.run_gui", fake_run_gui)
+
+    assert main(["gui", "examples/config.yaml"]) == 3
+    assert started == [Path("examples/config.yaml")]
+
+
 @pytest.mark.network
 def test_check_reports_only_cheap_new_flats(
     tmp_path: Path, fake_listings: FakeListings, capsys: pytest.CaptureFixture[str]

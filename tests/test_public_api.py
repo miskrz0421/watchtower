@@ -7,9 +7,22 @@ from types import ModuleType
 import pytest
 
 import watchtower
-from watchtower import config, core, diffs, filters, notifiers, sources, storage
+from watchtower import config, core, diffs, filters, gui, notifiers, reports, sources, storage
+from watchtower.gui import tabs
 
-_PACKAGES = [watchtower, config, core, diffs, filters, notifiers, sources, storage]
+_PACKAGES = [
+    watchtower,
+    config,
+    core,
+    diffs,
+    filters,
+    gui,
+    tabs,
+    notifiers,
+    reports,
+    sources,
+    storage,
+]
 
 
 @pytest.mark.parametrize("package", _PACKAGES, ids=lambda package: package.__name__)
@@ -27,4 +40,4 @@ def test_importing_the_package_registers_built_in_plugins() -> None:
     assert {"fake", "file", "rss", "webpage", "json_api"} <= set(plugins["source"])
     assert {"items", "text"} <= set(plugins["differ"])
     assert {"new_items", "price_below", "all", "any", "not"} <= set(plugins["filter"])
-    assert "console" in plugins["notifier"]
+    assert {"console", "desktop", "discord"} <= set(plugins["notifier"])

@@ -46,6 +46,10 @@ clean:
 watchtower *args:
     @uv run watchtower {{ args }}
 
+# Open the tray app, e.g. `just gui` or `just gui my-config.yaml`
+gui config="examples/config.yaml":
+    @uv run watchtower gui {{ config }}
+
 # Serve the fake listings website for demos, e.g. `just serve --port 8001`
 serve *args:
     @uv run watchtower-fake-listings {{ args }}
