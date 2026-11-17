@@ -5,9 +5,9 @@ from __future__ import annotations
 import logging
 import socket
 from pathlib import Path
+from textwrap import dedent
 
 import pytest
-from dedent import dedent
 
 from conftest import SAMPLE_LISTINGS, FakeListings
 from watchtower.cli import main

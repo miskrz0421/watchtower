@@ -8,9 +8,8 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from textwrap import dedent
 from typing import TypedDict
-
-from dedent import dedent
 
 from watchtower._errors import StorageError
 from watchtower._events import CheckCompleted

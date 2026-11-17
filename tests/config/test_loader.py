@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from datetime import timedelta
 from pathlib import Path
+from textwrap import dedent
 
 import pytest
-from dedent import dedent
 
 from watchtower import Change, ChangeKind, ConfigError, Item
 from watchtower.config import Config, load_config
