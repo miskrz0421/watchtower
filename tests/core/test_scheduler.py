@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import logging
+import threading
 from datetime import UTC, datetime, timedelta
 
 import pytest
 
 from watchtower import Change, CheckCompleted, EventBus, Snapshot, SourceError
-from watchtower.core import FakeClock, Scheduler, Watcher
+from watchtower.core import CheckNow, FakeClock, Scheduler, Watcher
 from watchtower.diffs import Differ, TextDiff
 from watchtower.sources import FakeSource, Source
 
@@ -150,6 +151,49 @@ def test_unexpected_error_is_logged_with_traceback(
 
     assert "Unexpected error in watcher 'buggy'" in caplog.text
     assert "RuntimeError: bug" in caplog.text
+
+
+def test_check_now_runs_a_watcher_before_its_interval(clock: FakeClock, bus: EventBus) -> None:
+    """Test that a CheckNow command makes a waiting watcher due on the next run."""
+    checks = _CheckLog(bus)
+    scheduler = Scheduler(clock)
+    scheduler.add(_watcher("a", 60, bus))
+    scheduler.run_pending()
+    clock.advance(10)
+
+    scheduler.submit(CheckNow("a"))
+
+    assert scheduler.run_pending() == 1
+    assert checks.names == ["a", "a"]
+    assert scheduler.next_due() == _START + timedelta(seconds=70)
+
+
+def test_check_now_for_an_unknown_watcher_is_ignored(
+    clock: FakeClock, bus: EventBus, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Test that a command naming no scheduled watcher is logged and changes nothing."""
+    scheduler = Scheduler(clock)
+    scheduler.add(_watcher("a", 60, bus))
+    scheduler.run_pending()
+
+    scheduler.submit(CheckNow("missing"))
+    with caplog.at_level(logging.WARNING):
+        assert scheduler.run_pending() == 0
+
+    assert "Cannot check 'missing' now" in caplog.text
+
+
+def test_commands_can_be_submitted_from_another_thread(clock: FakeClock, bus: EventBus) -> None:
+    """Test that a command submitted by another thread is applied by the scheduler's thread."""
+    scheduler = Scheduler(clock)
+    scheduler.add(_watcher("a", 60, bus))
+    scheduler.run_pending()
+
+    sender = threading.Thread(target=scheduler.submit, args=(CheckNow("a"),))
+    sender.start()
+    sender.join()
+
+    assert scheduler.run_pending() == 1
 
 
 def test_run_forever_sleeps_until_each_due_check(clock: FakeClock, bus: EventBus) -> None:
