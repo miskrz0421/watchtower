@@ -93,20 +93,19 @@ class JSONAPISource(HttpSource):
             ParseError: If the path does not exist in the response or does
                 not lead to a list.
         """
-        current = payload
         for part in self._items_path:
-            if not isinstance(current, Mapping) or part not in current:
+            if not isinstance(payload, Mapping) or part not in payload:
                 msg = f"Path {'.'.join(self._items_path)!r} does not exist in the response"
                 raise ParseError(msg)
-            current = current[part]
-        if not isinstance(current, list):
+            payload = payload[part]
+        if not isinstance(payload, list):
             msg = (
                 "Response is not a JSON list"
                 if len(self._items_path) == 0
                 else f"Path {'.'.join(self._items_path)!r} does not lead to a list"
             )
             raise ParseError(msg)
-        return current
+        return payload
 
     def _to_item(self, raw_item: _JsonValue, position: int) -> Item:
         """Convert one object from the list to an Item, validating its fields.
