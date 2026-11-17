@@ -179,36 +179,29 @@ PR that makes the decision.
 - Context: the top-level package re-exported 44 names, including test helpers (`FakeSource`),
   serialisation details (`ItemDict`) and every built-in plugin, and module-level names such as
   `logger` looked public. A reader could not tell what a user of the framework may rely on.
-  Furthermore, allowing callers to import from internal module files (`watchtower.models`,
-  `watchtower.storage.snapshots`) bypassed package encapsulation and leaked file structure details.
-- Decision:
-  1. Providing public API is EXCLUSIVELY via `__init__.py`.
-     - `watchtower/__init__.py` exports only what is needed to build a watcher in code or write a
-       plugin (`Watcher`, `SnapshotStore`, models, events, `EventBus`, plugin base classes,
-       errors, and registry functions).
-     - Each subpackage lists its public classes and functions in the `__all__` of its `__init__.py`
-       (`from watchtower.sources import WebPageSource, parse_price`, `from watchtower.config import load_config`).
-  2. All module files that do not directly expose a public API themselves, or expose functionality
-     only through `__init__.py`, are marked private with a leading underscore prefix (`_models.py`,
-     `_errors.py`, `_events.py`, `_registry.py`, `_loader.py`, `_snapshots.py`, `_filters.py`, etc.).
-  3. External callers and tests import strictly from the package or subpackage roots (`watchtower`,
-     `watchtower.config`, `watchtower.sources`, etc.), never from the internal `_*` files.
-  4. Non-prefixed files:
-     - `cli.py`: remains without an underscore because it is an executable console script entry point
-       defined in `pyproject.toml` (`[project.scripts] watchtower = "watchtower.cli:main"`), not an
-       importable library API module.
-     - `__init__.py`: package initialization files defining the public boundaries.
-  5. Intra-package imports: inside the package, modules import from the private defining modules
-     (`from watchtower._models import Change`, `from watchtower.sources._base import Source`) to keep
-     imports completely cycle-free during `__init__.py` execution.
-- Alternatives:
-  - Keeping plain module names (original M2 decision): callers could still import from deep
-    internal modules like `watchtower.models`, creating tight coupling to internal file layout.
-  - Prefixing all files including `cli.py`: breaking console script convention where CLI entry points
-    are public executable modules.
-- Consequences: importing `watchtower` or its subpackages is the only supported way to use the library.
-  Implementation details can be freely refactored or moved between `_*` files without breaking public API
-  contracts. The tests verify that all functionality is accessible through the public package roots.
+- Decision: there are three levels.
+  1. `watchtower` exports only what is needed to build a watcher in code or to write a plugin:
+     `Watcher`, `SnapshotStore`, the models, the events and `EventBus`, the plugin base classes,
+     the errors and the registry functions.
+  2. Each subpackage lists its public classes in the `__all__` of its `__init__.py`. Built-in
+     plugins are imported from there (`from watchtower.sources import WebPageSource`) or
+     created by name through the registry.
+  3. Anything used only inside its own file or class starts with an underscore: `_logger`,
+     helper functions, constants, instance attributes.
+- Module files keep plain names (`storage/snapshots.py`, not `storage/_snapshots.py`). With
+  level 2 every module would get the underscore, so it would mark nothing; inside the package
+  we import from the module that defines a name, which keeps imports free of cycles.
+- Alternatives: underscore-prefixed module files (the same information as `__all__`, at the
+  cost of renaming every file and import); exporting everything from the top level (hides what
+  is stable); no top-level exports (every user needs to know the internal layout).
+- Consequences: importing `watchtower` still imports the plugin packages, so built-in plugins
+  are registered. A new public name has to be added to an `__all__` on purpose.
+- Amended (M3): after the M3 review, every module file except `cli.py` gets a leading
+  underscore (`_models.py`, `storage/_snapshots.py`), so a package can only be used through
+  the `__all__` of its `__init__.py`; `watchtower.storage.snapshots` no longer exists. `cli.py`
+  keeps its name because `[project.scripts]` points at it. Inside the package, modules still
+  import from the `_` module that defines a name, which keeps imports free of cycles. Tests
+  import only from the package roots, and `tests/test_public_api.py` checks every `__all__`.
 
 ## ADR-016: One way to run things, one place for generated files, a coverage floor
 - Status: accepted · after M2
