@@ -115,8 +115,8 @@ Each thread opens its own connection (`sqlite3` connections must not be shared a
 - **UI → Engine:** buttons call `Scheduler.submit` with a command (`Pause`, `Resume`,
   `CheckNow`, `ReloadConfig`); it goes on a thread-safe `queue.SimpleQueue` and the scheduler
   applies it at the start of its next `run_pending` (Command pattern, ADR-023).
-- **Desktop notifications:** the `desktop` notifier has no Qt in it; the GUI connects it to the
-  bridge's `notification_requested` signal, which the tray icon shows.
+- **Desktop notifications:** the `desktop` notifier uses the `desktop-notifier` package, not Qt,
+  so it works the same with and without the GUI (ADR-024).
 - Headless mode (`watchtower run`) uses the same engine in the main thread and never imports Qt.
 
 ## Design patterns map

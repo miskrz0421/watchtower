@@ -416,16 +416,19 @@ PR that makes the decision.
     methods of widgets and models are connected to them, never lambdas or plain functions (those
     would run in the engine thread).
   - GUI → engine: only `Scheduler.submit` (ADR-023).
-  - Desktop notifications: `DesktopNotifier` is an ordinary notifier plugin (`desktop`) without Qt.
-    `run_gui` connects every `DesktopNotifier` of the loaded watchers to
-    `bridge.notification_requested.emit`, and the tray icon's `showMessage` to that signal.
+  - Desktop notifications: `DesktopNotifier` is an ordinary notifier plugin (`desktop`) built on
+    the cross-platform `desktop-notifier` package, without Qt. It works the same in
+    `watchtower run` and in the tray app, so the GUI does not wire it up.
   - `MainWindow(bridge, scheduler, history)` gives each tab only what it needs: Watchers gets the
     bridge and the scheduler, Changes the bridge and the history, Reports the history. `history`
     is None when the config has no database.
 - Alternatives: a `QTimer` calling `run_pending` in the GUI thread (a slow website freezes the
   window); watchers emitting Qt signals themselves (the core would import Qt); one signal carrying
-  any event (every tab would check types, and nothing would say which events the GUI uses).
+  any event (every tab would check types, and nothing would say which events the GUI uses);
+  desktop messages through the tray icon's `showMessage`, as first written here (the GUI would
+  have to connect every `desktop` notifier to a bridge signal, and outside the GUI the notifier
+  could only fail).
 - Consequences: tabs are built and tested without the engine: a test emits the bridge's signals
   or calls a model's methods directly. Reading the history from the GUI thread is safe because
-  `HistoryStore` opens a connection per call (ADR-021). Outside the GUI a `desktop` notifier has
-  nowhere to show its message, so it raises `NotifyError`, which the watcher logs.
+  `HistoryStore` opens a connection per call (ADR-021). `desktop-notifier` is one more dependency;
+  it goes into an optional extra and the `dev` group, not into the core (ADR-003).

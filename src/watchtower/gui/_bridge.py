@@ -25,7 +25,6 @@ class EngineBridge(QObject):
     change_detected = Signal(ChangeDetected)
     fetch_failed = Signal(FetchFailed)
     state_changed = Signal(WatcherStateChanged)
-    notification_requested = Signal(str, str)
 
     def attach(self, event_bus: EventBus) -> None:
         """Start re-emitting the events published on a bus.
