@@ -35,7 +35,7 @@ just lint                  # report lint problems
 just format                # fix formatting and auto-fixable lint problems
 just typecheck             # mypy
 just check                 # everything CI runs, tests with coverage (fails below 95%)
-just clean                 # remove cache files and directories
+just clean                 # remove tool caches, coverage data and bytecode
 just serve                 # fake listings website for demos
 just watchtower plugins    # the app; arguments are passed on
 ```
