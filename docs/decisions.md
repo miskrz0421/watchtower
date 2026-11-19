@@ -329,6 +329,8 @@ PR that makes the decision.
 - Note (M4): the sleep is now `Clock.wait(seconds, wake)`. `submit` and `stop` set the wake
   event, so the loop applies a command or returns at once instead of after the wait (ADR-023).
   The loop checks the due watchers first and then waits, so `stop` never starts another round.
+  A `stop` sent before `run_forever` starts is kept, and the flag is cleared when the loop
+  ends, so the GUI can quit at once and a stopped scheduler can run again.
 
 ## ADR-021: History storage schema and streaming generator queries
 - Status: accepted · M3
