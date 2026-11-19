@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import queue
 import threading
 from datetime import UTC, datetime, timedelta
 
@@ -219,6 +220,40 @@ def test_run_forever_without_watchers_returns(clock: FakeClock) -> None:
     """Test that run_forever does not loop when there is nothing to run."""
     Scheduler(clock).run_forever()
     assert clock.now() == _START
+
+
+def test_stop_from_another_thread_ends_the_wait(bus: EventBus) -> None:
+    """Test that stop ends a long wait at once instead of after the next check."""
+    checks: queue.SimpleQueue[CheckCompleted] = queue.SimpleQueue()
+    bus.subscribe(CheckCompleted, checks.put)
+    scheduler = Scheduler()
+    scheduler.add(_watcher("hourly", 3600, bus))
+    engine = threading.Thread(target=scheduler.run_forever)
+    engine.start()
+
+    checks.get(timeout=5)
+    scheduler.stop()
+    engine.join(timeout=5)
+
+    assert not engine.is_alive()
+
+
+def test_command_from_another_thread_ends_the_wait(bus: EventBus) -> None:
+    """Test that a submitted command is applied at once, not after the interval."""
+    checks: queue.SimpleQueue[CheckCompleted] = queue.SimpleQueue()
+    bus.subscribe(CheckCompleted, checks.put)
+    scheduler = Scheduler()
+    scheduler.add(_watcher("hourly", 3600, bus))
+    engine = threading.Thread(target=scheduler.run_forever)
+    engine.start()
+
+    checks.get(timeout=5)
+    scheduler.submit(CheckNow("hourly"))
+    second = checks.get(timeout=5)
+    scheduler.stop()
+    engine.join(timeout=5)
+
+    assert second.watcher_name == "hourly"
 
 
 def test_default_clock_is_the_system_clock() -> None:

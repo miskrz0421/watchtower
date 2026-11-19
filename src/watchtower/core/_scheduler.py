@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import queue
+import threading
 from datetime import datetime
 
 from watchtower._errors import WatchtowerError
@@ -33,6 +34,7 @@ class Scheduler:
         self._watchers: dict[str, Watcher] = {}
         self._due: dict[str, datetime] = {}
         self._commands: queue.SimpleQueue[Command] = queue.SimpleQueue()
+        self._wake = threading.Event()
         self._stop_requested = False
 
     def add(self, watcher: Watcher) -> None:
@@ -51,14 +53,13 @@ class Scheduler:
         self._due[watcher.name] = self._clock.now()
 
     def submit(self, command: Command) -> None:
-        """Queue a command; it is applied at the start of the next `run_pending`.
-
-        Safe to call from any thread: this is how the GUI controls the engine.
+        """Queue a command from any thread and wake `run_forever`, which applies it at once.
 
         Args:
             command: Command to apply.
         """
         self._commands.put(command)
+        self._wake.set()
 
     def statuses(self) -> list[WatcherStatus]:
         """Return the state of every watcher, in the order they were added.
@@ -96,18 +97,17 @@ class Scheduler:
         return len(due)
 
     def run_forever(self) -> None:
-        """Run due watchers and sleep until the next one, until `stop` is called.
-
-        Returns at once if no watcher was added.
-        """
+        """Check due watchers and wait for the next until `stop`; commands end the wait early."""
         self._stop_requested = False
         while self._watchers and not self._stop_requested:
-            self._clock.sleep(self._seconds_until_next_due())
             self.run_pending()
+            self._clock.wait(self._seconds_until_next_due(), self._wake)
+            self._wake.clear()
 
     def stop(self) -> None:
-        """Make `run_forever` return after the check that is running."""
+        """Make `run_forever` return after the check that is running; safe from any thread."""
         self._stop_requested = True
+        self._wake.set()
 
     def _apply_commands(self) -> None:
         """Apply every submitted command, oldest first."""
@@ -157,7 +157,7 @@ class Scheduler:
         self._due[watcher.name] = self._clock.now() + watcher.interval
 
     def _seconds_until_next_due(self) -> float:
-        """Return how long to sleep before the earliest due check.
+        """Return how long to wait before the earliest due check.
 
         Returns:
             Seconds until the next check; 0 if one is already due.

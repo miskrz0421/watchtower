@@ -326,6 +326,9 @@ PR that makes the decision.
   observer, expected failures are visible only at DEBUG, so the CLI always attaches a
   `LoggingObserver` to `run`. `stop()` called from another thread takes effect after the current
   sleep; M5 can replace the sleep with an event wait if that is too slow.
+- Note (M4): the sleep is now `Clock.wait(seconds, wake)`. `submit` and `stop` set the wake
+  event, so the loop applies a command or returns at once instead of after the wait (ADR-023).
+  The loop checks the due watchers first and then waits, so `stop` never starts another round.
 
 ## ADR-021: History storage schema and streaming generator queries
 - Status: accepted · M3

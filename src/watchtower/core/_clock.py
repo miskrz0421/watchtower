@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import time
+import threading
 from datetime import UTC, datetime, timedelta
 from typing import Protocol
 
@@ -18,11 +18,13 @@ class Clock(Protocol):
         """
         ...
 
-    def sleep(self, seconds: float) -> None:
-        """Wait before the next look at the time.
+    def wait(self, seconds: float | None, wake: threading.Event) -> None:
+        """Wait before the next look at the time, or less if `wake` is set.
 
         Args:
-            seconds: How long to wait; never negative.
+            seconds: How long to wait at most, never negative; None waits until
+                `wake` is set.
+            wake: Event another thread sets to end the wait early.
         """
         ...
 
@@ -38,17 +40,18 @@ class SystemClock:
         """
         return datetime.now(UTC)
 
-    def sleep(self, seconds: float) -> None:
-        """Block the calling thread.
+    def wait(self, seconds: float | None, wake: threading.Event) -> None:
+        """Block the calling thread until the time is up or `wake` is set.
 
         Args:
-            seconds: How long to block.
+            seconds: How long to block at most; None blocks until `wake` is set.
+            wake: Event another thread sets to end the wait early.
         """
-        time.sleep(seconds)
+        wake.wait(seconds)
 
 
 class FakeClock:
-    """Clock for tests: time moves only when the test or `sleep` moves it."""
+    """Clock for tests: time moves only when the test or `wait` moves it."""
 
     def __init__(self, start: datetime) -> None:
         """Initialize FakeClock.
@@ -72,13 +75,16 @@ class FakeClock:
         """
         return self._now
 
-    def sleep(self, seconds: float) -> None:
-        """Move the clock forward instead of waiting.
+    def wait(self, seconds: float | None, wake: threading.Event) -> None:
+        """Move the clock forward instead of waiting, unless `wake` is already set.
 
         Args:
-            seconds: How far to move the clock.
+            seconds: How far to move the clock; None leaves it where it is,
+                since nothing else would move the fake time.
+            wake: If set, the clock is not moved, as the real wait would end at once.
         """
-        self.advance(seconds)
+        if seconds is not None and not wake.is_set():
+            self.advance(seconds)
 
     def advance(self, seconds: float) -> None:
         """Move the clock forward from a test.
