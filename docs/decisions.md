@@ -404,6 +404,11 @@ PR that makes the decision.
   lock. A command waits until the loop wakes up, so `run_forever` must stop sleeping when a command
   arrives; the states PR replaces the sleep with a wait that `submit` and `stop` interrupt (the
   M5 change ADR-020 mentions). Tests submit a command and call `run_pending` with a `FakeClock`.
+- Note (M4, states PR): the backoff cap is one hour or the watcher's own interval, whichever is
+  longer, so a daily watcher in backoff is not checked more often than when it works. A watcher
+  in `Backoff` is logged at INFO after every failure with its failure count and next wait, and
+  `LoggingObserver` logs `WatcherStateChanged` (WARNING for Backoff and Disabled, INFO
+  otherwise), so `watchtower run` shows the whole Active → Backoff → Active cycle.
 
 ## ADR-024: GUI threading and the bridge contract
 - Status: accepted · M5

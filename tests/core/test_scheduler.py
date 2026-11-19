@@ -9,8 +9,16 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from watchtower import Change, CheckCompleted, EventBus, Snapshot, SourceError
-from watchtower.core import CheckNow, FakeClock, Scheduler, Watcher
+from watchtower import (
+    Change,
+    CheckCompleted,
+    EventBus,
+    Snapshot,
+    SourceError,
+    WatcherState,
+    WatcherStateChanged,
+)
+from watchtower.core import CheckNow, FakeClock, Pause, Resume, Scheduler, Watcher, WatcherStatus
 from watchtower.diffs import Differ, TextDiff
 from watchtower.sources import FakeSource, Source
 
@@ -27,6 +35,25 @@ class _DownSource(Source):
 
     def parse(self, raw: str) -> list[None]:
         """Return no items; never reached."""
+        return []
+
+
+class _SwitchableSource(Source):
+    """Source whose server a test can take down and bring back."""
+
+    def __init__(self) -> None:
+        """Start with the server up."""
+        self.down = False
+
+    def fetch(self) -> str:
+        """Return a page, or fail with a SourceError while the server is down."""
+        if self.down:
+            msg = "server down"
+            raise SourceError(msg)
+        return "page"
+
+    def parse(self, raw: str) -> list[None]:
+        """Return no items."""
         return []
 
 
@@ -63,6 +90,19 @@ def _watcher(
         event_bus=event_bus,
         interval=timedelta(seconds=seconds),
     )
+
+
+class _StateLog:
+    """Keeps the state changes published on the bus, as (old, new) pairs."""
+
+    def __init__(self, event_bus: EventBus) -> None:
+        """Subscribe to WatcherStateChanged on the bus."""
+        self.changes: list[tuple[WatcherState, WatcherState]] = []
+        event_bus.subscribe(WatcherStateChanged, self._record)
+
+    def _record(self, changed: WatcherStateChanged) -> None:
+        """Remember the old and new state."""
+        self.changes.append((changed.old_state, changed.new_state))
 
 
 @pytest.fixture
@@ -169,19 +209,160 @@ def test_check_now_runs_a_watcher_before_its_interval(clock: FakeClock, bus: Eve
     assert scheduler.next_due() == _START + timedelta(seconds=70)
 
 
-def test_check_now_for_an_unknown_watcher_is_ignored(
+def test_failing_watcher_backs_off_with_doubling_waits(
     clock: FakeClock, bus: EventBus, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Test that each failure in a row doubles the wait before the next check."""
+    scheduler = Scheduler(clock)
+    scheduler.add(_watcher("broken", 30, bus, _DownSource()))
+
+    waits = []
+    with caplog.at_level(logging.INFO):
+        for _ in range(4):
+            scheduler.run_pending()
+            due = scheduler.next_due()
+            assert due is not None
+            waits.append((due - clock.now()).total_seconds())
+            clock.advance(waits[-1])
+
+    assert waits == [60, 120, 240, 480]
+    assert "'broken' failed 4 time(s) in a row; next check in 0:08:00" in caplog.messages
+
+
+def test_fifth_failure_disables_the_watcher(clock: FakeClock, bus: EventBus) -> None:
+    """Test that a watcher failing five times in a row is no longer checked."""
+    states = _StateLog(bus)
+    scheduler = Scheduler(clock)
+    scheduler.add(_watcher("broken", 30, bus, _DownSource()))
+
+    for _ in range(5):
+        scheduler.run_pending()
+        clock.advance(3600)
+
+    assert scheduler.next_due() is None
+    assert scheduler.run_pending() == 0
+    assert states.changes == [
+        (WatcherState.ACTIVE, WatcherState.BACKOFF),
+        (WatcherState.BACKOFF, WatcherState.DISABLED),
+    ]
+
+
+def test_watcher_recovers_after_a_successful_check(clock: FakeClock, bus: EventBus) -> None:
+    """Test that a backing-off watcher is active again, at its interval, once it succeeds."""
+    states = _StateLog(bus)
+    source = _SwitchableSource()
+    scheduler = Scheduler(clock)
+    scheduler.add(_watcher("flaky", 30, bus, source))
+
+    source.down = True
+    scheduler.run_pending()
+    clock.advance(60)
+    source.down = False
+    scheduler.run_pending()
+
+    assert states.changes == [
+        (WatcherState.ACTIVE, WatcherState.BACKOFF),
+        (WatcherState.BACKOFF, WatcherState.ACTIVE),
+    ]
+    assert scheduler.next_due() == clock.now() + timedelta(seconds=30)
+
+
+def test_paused_watcher_is_not_checked(clock: FakeClock, bus: EventBus) -> None:
+    """Test that Pause stops the checks and publishes the new state."""
+    states = _StateLog(bus)
+    scheduler = Scheduler(clock)
+    scheduler.add(_watcher("a", 30, bus))
+
+    scheduler.submit(Pause("a"))
+
+    assert scheduler.run_pending() == 0
+    assert scheduler.next_due() is None
+    assert states.changes == [(WatcherState.ACTIVE, WatcherState.PAUSED)]
+
+
+def test_resume_makes_a_paused_watcher_active_and_due_at_once(
+    clock: FakeClock, bus: EventBus
+) -> None:
+    """Test that Resume brings a paused watcher back and checks it on the next run."""
+    states = _StateLog(bus)
+    scheduler = Scheduler(clock)
+    scheduler.add(_watcher("a", 30, bus))
+    scheduler.submit(Pause("a"))
+    scheduler.run_pending()
+
+    scheduler.submit(Resume("a"))
+
+    assert scheduler.run_pending() == 1
+    assert states.changes[-1] == (WatcherState.PAUSED, WatcherState.ACTIVE)
+
+
+def test_resume_brings_back_a_disabled_watcher(clock: FakeClock, bus: EventBus) -> None:
+    """Test that a disabled watcher whose server is back is active after Resume."""
+    source = _SwitchableSource()
+    source.down = True
+    scheduler = Scheduler(clock)
+    scheduler.add(_watcher("flaky", 30, bus, source))
+    for _ in range(5):
+        scheduler.run_pending()
+        clock.advance(3600)
+    source.down = False
+
+    scheduler.submit(Resume("flaky"))
+    scheduler.run_pending()
+
+    assert scheduler.statuses()[0].state is WatcherState.ACTIVE
+
+
+def test_check_now_checks_a_paused_watcher_once(clock: FakeClock, bus: EventBus) -> None:
+    """Test that CheckNow runs a paused watcher, which then stays paused."""
+    checks = _CheckLog(bus)
+    scheduler = Scheduler(clock)
+    scheduler.add(_watcher("a", 30, bus))
+    scheduler.submit(Pause("a"))
+    scheduler.run_pending()
+
+    scheduler.submit(CheckNow("a"))
+
+    assert scheduler.run_pending() == 1
+    assert checks.names == ["a"]
+    assert scheduler.next_due() is None
+    assert scheduler.statuses()[0].state is WatcherState.PAUSED
+
+
+def test_statuses_show_state_interval_and_last_check(clock: FakeClock, bus: EventBus) -> None:
+    """Test that statuses describe every watcher in the order they were added."""
+    scheduler = Scheduler(clock)
+    scheduler.add(_watcher("a", 30, bus))
+    scheduler.add(_watcher("b", 60, bus))
+    assert scheduler.statuses()[0].last_check is None
+
+    scheduler.run_pending()
+    scheduler.submit(Pause("b"))
+    scheduler.run_pending()
+
+    assert scheduler.statuses() == [
+        WatcherStatus("a", WatcherState.ACTIVE, timedelta(seconds=30), _START),
+        WatcherStatus("b", WatcherState.PAUSED, timedelta(seconds=60), _START),
+    ]
+
+
+@pytest.mark.parametrize("command", [Pause("missing"), Resume("missing"), CheckNow("missing")])
+def test_command_for_an_unknown_watcher_is_ignored(
+    clock: FakeClock,
+    bus: EventBus,
+    caplog: pytest.LogCaptureFixture,
+    command: Pause | Resume | CheckNow,
 ) -> None:
     """Test that a command naming no scheduled watcher is logged and changes nothing."""
     scheduler = Scheduler(clock)
     scheduler.add(_watcher("a", 60, bus))
     scheduler.run_pending()
 
-    scheduler.submit(CheckNow("missing"))
+    scheduler.submit(command)
     with caplog.at_level(logging.WARNING):
         assert scheduler.run_pending() == 0
 
-    assert "Cannot check 'missing' now" in caplog.text
+    assert f"Ignoring {command!r}: no watcher has that name" in caplog.text
 
 
 def test_commands_can_be_submitted_from_another_thread(clock: FakeClock, bus: EventBus) -> None:
@@ -254,6 +435,27 @@ def test_command_from_another_thread_ends_the_wait(bus: EventBus) -> None:
     engine.join(timeout=5)
 
     assert second.watcher_name == "hourly"
+
+
+def test_run_forever_with_every_watcher_paused_waits_for_a_command(bus: EventBus) -> None:
+    """Test that the loop waits without a time limit until a command brings a watcher back."""
+    states: queue.SimpleQueue[WatcherStateChanged] = queue.SimpleQueue()
+    checks: queue.SimpleQueue[CheckCompleted] = queue.SimpleQueue()
+    bus.subscribe(WatcherStateChanged, states.put)
+    bus.subscribe(CheckCompleted, checks.put)
+    scheduler = Scheduler()
+    scheduler.add(_watcher("a", 3600, bus))
+    scheduler.submit(Pause("a"))
+    engine = threading.Thread(target=scheduler.run_forever)
+    engine.start()
+
+    states.get(timeout=5)
+    scheduler.submit(Resume("a"))
+    check = checks.get(timeout=5)
+    scheduler.stop()
+    engine.join(timeout=5)
+
+    assert check.watcher_name == "a"
 
 
 def test_default_clock_is_the_system_clock() -> None:
