@@ -17,12 +17,14 @@ class EngineThread(QThread):
             scheduler: Scheduler with every watcher added.
             parent: Qt parent object.
         """
-        raise NotImplementedError
+        super().__init__(parent)
+        self._scheduler = scheduler
 
     def run(self) -> None:
         """Run the scheduler until `stop` is called; Qt calls this in the new thread."""
-        raise NotImplementedError
+        self._scheduler.run_forever()
 
     def stop(self) -> None:
         """Ask the scheduler to stop and wait until the thread ends."""
-        raise NotImplementedError
+        self._scheduler.stop()
+        self.wait()
