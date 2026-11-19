@@ -9,6 +9,9 @@ from typing import ClassVar
 
 from watchtower._events import WatcherState
 
+_MAX_BACKOFF = timedelta(hours=1)
+_FAILURES_BEFORE_DISABLED = 5
+
 
 @dataclass(frozen=True)
 class WatcherStatus:
@@ -67,7 +70,7 @@ class Active(State):
         Returns:
             The interval.
         """
-        raise NotImplementedError
+        return interval
 
     def after_success(self) -> State:
         """Stay active.
@@ -75,7 +78,7 @@ class Active(State):
         Returns:
             An Active state.
         """
-        raise NotImplementedError
+        return self
 
     def after_failure(self) -> State:
         """Start backing off.
@@ -83,7 +86,7 @@ class Active(State):
         Returns:
             A Backoff state after one failure.
         """
-        raise NotImplementedError
+        return Backoff(failures=1)
 
 
 class Paused(State):
@@ -100,7 +103,7 @@ class Paused(State):
         Returns:
             None.
         """
-        raise NotImplementedError
+        return None
 
     def after_success(self) -> State:
         """Stay paused; a check that was running when the user paused does not resume it.
@@ -108,7 +111,7 @@ class Paused(State):
         Returns:
             This state.
         """
-        raise NotImplementedError
+        return self
 
     def after_failure(self) -> State:
         """Stay paused.
@@ -116,7 +119,7 @@ class Paused(State):
         Returns:
             This state.
         """
-        raise NotImplementedError
+        return self
 
 
 class Backoff(State):
@@ -129,11 +132,22 @@ class Backoff(State):
 
         Args:
             failures: Number of failed checks in a row, at least 1.
+
+        Raises:
+            ValueError: If `failures` is less than 1.
         """
-        raise NotImplementedError
+        if failures < 1:
+            msg = f"Backoff needs at least one failure, got {failures}"
+            raise ValueError(msg)
+        self._failures = failures
+
+    @property
+    def failures(self) -> int:
+        """Number of failed checks in a row."""
+        return self._failures
 
     def delay(self, interval: timedelta) -> timedelta | None:
-        """Return the interval doubled once per failure, but not more than the cap.
+        """Return the interval doubled once per failure, at most one hour or the interval if longer.
 
         Args:
             interval: The watcher's normal time between checks.
@@ -141,7 +155,9 @@ class Backoff(State):
         Returns:
             The time to wait.
         """
-        raise NotImplementedError
+        doubled: timedelta = interval * 2**self._failures
+        cap = max(_MAX_BACKOFF, interval)
+        return min(doubled, cap)
 
     def after_success(self) -> State:
         """Recover.
@@ -149,7 +165,7 @@ class Backoff(State):
         Returns:
             An Active state.
         """
-        raise NotImplementedError
+        return Active()
 
     def after_failure(self) -> State:
         """Back off further, or give up after too many failures in a row.
@@ -157,7 +173,8 @@ class Backoff(State):
         Returns:
             A Backoff state with one more failure, or Disabled.
         """
-        raise NotImplementedError
+        failures = self._failures + 1
+        return Disabled() if failures >= _FAILURES_BEFORE_DISABLED else Backoff(failures)
 
 
 class Disabled(State):
@@ -174,7 +191,7 @@ class Disabled(State):
         Returns:
             None.
         """
-        raise NotImplementedError
+        return None
 
     def after_success(self) -> State:
         """Stay disabled.
@@ -182,7 +199,7 @@ class Disabled(State):
         Returns:
             This state.
         """
-        raise NotImplementedError
+        return self
 
     def after_failure(self) -> State:
         """Stay disabled.
@@ -190,4 +207,4 @@ class Disabled(State):
         Returns:
             This state.
         """
-        raise NotImplementedError
+        return self
