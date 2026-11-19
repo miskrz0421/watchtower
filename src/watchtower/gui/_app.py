@@ -2,19 +2,81 @@
 
 from __future__ import annotations
 
-from pathlib import Path
+import signal
+import sys
+from collections.abc import Iterator
+from contextlib import contextmanager
+
+from PySide6.QtCore import QTimer
+from PySide6.QtWidgets import QApplication
+
+from watchtower._events import EventBus
+from watchtower.core._scheduler import Scheduler
+from watchtower.gui._bridge import EngineBridge
+from watchtower.gui._engine import EngineThread
+from watchtower.gui._main_window import MainWindow
+from watchtower.storage._history import HistoryStore
+
+_PYTHON_WAKE_UP_MS = 200
 
 
-def run_gui(config_path: Path) -> int:
-    """Run the watchers of a config file with the tray icon and window, until Quit.
+def run_gui(scheduler: Scheduler, event_bus: EventBus, history: HistoryStore | None) -> int:
+    """Show the window and run the scheduler in an EngineThread until the window closes or Ctrl+C.
 
     Args:
-        config_path: YAML config file.
+        scheduler: Scheduler with every watcher added, not running yet.
+        event_bus: Bus the watchers and the scheduler publish on.
+        history: Saved changes and checks; None when the config has no database.
 
     Returns:
         The exit code of the Qt event loop.
-
-    Raises:
-        WatchtowerError: If the config or the database cannot be used.
     """
-    raise NotImplementedError
+    app = _application()
+    bridge = EngineBridge()
+    bridge.attach(event_bus)
+    window = MainWindow(bridge, scheduler, history)
+    engine = EngineThread(scheduler)
+
+    window.show()
+    engine.start()
+    with _ctrl_c_quits(app):
+        exit_code = app.exec()
+    engine.stop()
+    return exit_code
+
+
+def _application() -> QApplication:
+    """Return the running QApplication, creating it if there is none yet.
+
+    Returns:
+        The application object.
+    """
+    existing = QApplication.instance()
+    return existing if isinstance(existing, QApplication) else QApplication(sys.argv)
+
+
+@contextmanager
+def _ctrl_c_quits(app: QApplication) -> Iterator[None]:
+    """Make Ctrl+C in the terminal quit the app while the block runs, as closing the window does.
+
+    Args:
+        app: Application to quit.
+
+    Yields:
+        Nothing; the previous Ctrl+C handler is back after the block.
+    """
+    # Qt's event loop runs Python signal handlers only when Python code runs, so a timer calls
+    # an empty Python function regularly.
+    wake_python = QTimer()
+    wake_python.timeout.connect(_do_nothing)
+    wake_python.start(_PYTHON_WAKE_UP_MS)
+    previous = signal.signal(signal.SIGINT, lambda _signum, _frame: app.quit())
+    try:
+        yield
+    finally:
+        signal.signal(signal.SIGINT, previous)
+        wake_python.stop()
+
+
+def _do_nothing() -> None:
+    """Give Python a moment to run pending signal handlers."""

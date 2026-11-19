@@ -397,6 +397,36 @@ def test_run_forever_sleeps_until_each_due_check(clock: FakeClock, bus: EventBus
     assert clock.now() == _START + timedelta(seconds=60)
 
 
+def test_stop_before_run_forever_makes_it_return_at_once(clock: FakeClock, bus: EventBus) -> None:
+    """Test that a stop sent before the loop starts is not lost (the GUI can quit at once)."""
+    checks = _CheckLog(bus)
+    scheduler = Scheduler(clock)
+    scheduler.add(_watcher("a", 30, bus))
+
+    scheduler.stop()
+    scheduler.run_forever()
+
+    assert checks.names == []
+
+
+def test_run_forever_can_run_again_after_a_stop(clock: FakeClock, bus: EventBus) -> None:
+    """Test that a stop ends only the run it was meant for."""
+    checks = _CheckLog(bus)
+    scheduler = Scheduler(clock)
+    scheduler.add(_watcher("a", 30, bus))
+    scheduler.stop()
+    scheduler.run_forever()
+
+    def stop_after_the_check(check: CheckCompleted) -> None:
+        """Stop the second run once it has checked the watcher."""
+        scheduler.stop()
+
+    bus.subscribe(CheckCompleted, stop_after_the_check)
+    scheduler.run_forever()
+
+    assert checks.names == ["a"]
+
+
 def test_run_forever_without_watchers_returns(clock: FakeClock) -> None:
     """Test that run_forever does not loop when there is nothing to run."""
     Scheduler(clock).run_forever()

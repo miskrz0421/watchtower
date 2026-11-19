@@ -104,12 +104,12 @@ class Scheduler:
         return len(due)
 
     def run_forever(self) -> None:
-        """Check due watchers and wait for the next until `stop`; commands end the wait early."""
-        self._stop_requested = False
+        """Check due watchers and wait for the next until `stop`, even one sent before the start."""
         while self._watchers and not self._stop_requested:
             self.run_pending()
             self._clock.wait(self._seconds_until_next_due(), self._wake)
             self._wake.clear()
+        self._stop_requested = False
 
     def stop(self) -> None:
         """Make `run_forever` return after the check that is running; safe from any thread."""

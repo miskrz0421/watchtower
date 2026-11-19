@@ -329,6 +329,8 @@ PR that makes the decision.
 - Note (M4): the sleep is now `Clock.wait(seconds, wake)`. `submit` and `stop` set the wake
   event, so the loop applies a command or returns at once instead of after the wait (ADR-023).
   The loop checks the due watchers first and then waits, so `stop` never starts another round.
+  A `stop` sent before `run_forever` starts is kept, and the flag is cleared when the loop
+  ends, so the GUI can quit at once and a stopped scheduler can run again.
 
 ## ADR-021: History storage schema and streaming generator queries
 - Status: accepted · M3
@@ -440,3 +442,7 @@ PR that makes the decision.
   or calls a model's methods directly. Reading the history from the GUI thread is safe because
   `HistoryStore` opens a connection per call (ADR-021). `desktop-notifier` is one more dependency;
   it goes into an optional extra and the `dev` group, not into the core (ADR-003).
+- Note (M5, engine PR): `run_gui(scheduler, event_bus, history)` gets everything built by the CLI,
+  so building watchers from a config stays in one place (`cli.py`) for `run` and `gui`. It builds
+  the bridge and the window before `EngineThread` starts, so the tabs read `Scheduler.statuses()`
+  while nothing else runs, and stops the engine after the Qt event loop returns.

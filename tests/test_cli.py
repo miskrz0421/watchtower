@@ -10,6 +10,7 @@ from textwrap import dedent
 import pytest
 
 from conftest import SAMPLE_LISTINGS, FakeListings
+from watchtower import EventBus
 from watchtower.cli import main
 from watchtower.core import Scheduler
 from watchtower.storage import HistoryStore
@@ -195,19 +196,27 @@ def test_run_checks_until_ctrl_c(
     assert len(list(HistoryStore(tmp_path / "watchtower.db").checks())) == 1
 
 
-def test_gui_starts_the_app_with_the_config(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Test that gui passes the config path to run_gui and returns its exit code."""
-    started: list[Path] = []
+def test_gui_starts_the_app_with_the_watchers_of_the_config(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Test that gui gives run_gui the scheduled watchers and the history, and returns its code."""
+    started: list[tuple[Scheduler, HistoryStore | None]] = []
 
-    def fake_run_gui(config_path: Path) -> int:
-        """Remember the config path instead of opening a window."""
-        started.append(config_path)
+    def fake_run_gui(
+        scheduler: Scheduler, event_bus: EventBus, history: HistoryStore | None
+    ) -> int:
+        """Remember what the app got instead of opening a window."""
+        started.append((scheduler, history))
         return 3
 
     monkeypatch.setattr("watchtower.gui.run_gui", fake_run_gui)
+    watched = tmp_path / "notes.txt"
+    watched.write_text("contents\n", encoding="utf-8")
 
-    assert main(["gui", "examples/config.yaml"]) == 3
-    assert started == [Path("examples/config.yaml")]
+    assert main(["gui", str(_file_config(tmp_path, watched))]) == 3
+    [(scheduler, history)] = started
+    assert [status.name for status in scheduler.statuses()] == ["Notes"]
+    assert history is not None
 
 
 @pytest.mark.network
