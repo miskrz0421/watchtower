@@ -230,6 +230,9 @@ PR that makes the decision.
     not by every pytest run. A bare `--cov` in pytest's `addopts` took the first argument as its
     value, so `just test tests/test_cli.py` ran every test; and the floor would fail any run of
     a single file anyway.
+  - Note (M5): CI runs `just check` on Ubuntu and Windows (`fail-fast: false`, so one failing
+    system does not hide the other's result). The app is meant for both, and the GUI tests run on
+    both with Qt's offscreen platform.
 - Alternatives: a Makefile (needs tabs, awkward on Windows, built for files rather than
   commands); only `uv run ...` lines in the README (nothing keeps them up to date); a Python
   task runner such as poethepoet (one more dependency inside the project, less known); a 100%
