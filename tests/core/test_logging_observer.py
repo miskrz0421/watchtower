@@ -15,6 +15,8 @@ from watchtower import (
     CheckCompleted,
     EventBus,
     FetchFailed,
+    WatcherState,
+    WatcherStateChanged,
 )
 from watchtower.core import LoggingObserver
 
@@ -72,3 +74,27 @@ def test_detected_change_is_logged_with_its_summary(
         bus.publish(ChangeDetected(watcher_name="Flats", event=event))
 
     assert caplog.messages == ["'Flats': 1 change(s) detected"]
+
+
+@pytest.mark.parametrize(
+    ("new_state", "level"),
+    [
+        (WatcherState.BACKOFF, logging.WARNING),
+        (WatcherState.DISABLED, logging.WARNING),
+        (WatcherState.PAUSED, logging.INFO),
+    ],
+)
+def test_state_change_is_logged_at_warning_only_when_failing(
+    bus: EventBus, caplog: pytest.LogCaptureFixture, new_state: WatcherState, level: int
+) -> None:
+    """Test that backoff and disabled are warnings and other states are info."""
+    with caplog.at_level(logging.INFO):
+        bus.publish(
+            WatcherStateChanged(
+                watcher_name="Flats", old_state=WatcherState.ACTIVE, new_state=new_state
+            )
+        )
+
+    assert caplog.record_tuples == [
+        ("watchtower.core._logging_observer", level, f"'Flats' is now {new_state} (was active)")
+    ]

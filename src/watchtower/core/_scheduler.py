@@ -4,24 +4,21 @@ from __future__ import annotations
 
 import logging
 import queue
-from datetime import datetime
+import threading
+from datetime import datetime, timedelta
 
 from watchtower._errors import WatchtowerError
+from watchtower._events import WatcherStateChanged
 from watchtower.core._clock import Clock, SystemClock
 from watchtower.core._commands import CheckNow, Command, Pause, ReloadConfig, Resume
-from watchtower.core._states import WatcherStatus
+from watchtower.core._states import Active, Backoff, Paused, State, WatcherStatus
 from watchtower.core._watcher import Watcher
 
 _logger = logging.getLogger(__name__)
 
 
 class Scheduler:
-    """Runs watchers at their intervals, one check at a time (see ADR-007).
-
-    Keeps the next due time of every watcher. All time comes from the clock,
-    so tests drive the scheduler with a FakeClock and never sleep (ADR-008).
-    Other threads control it only through `submit` (ADR-023).
-    """
+    """Runs watchers one check at a time, when their states say they are due (ADR-007, ADR-023)."""
 
     def __init__(self, clock: Clock | None = None) -> None:
         """Initialize Scheduler.
@@ -31,12 +28,15 @@ class Scheduler:
         """
         self._clock: Clock = clock if clock is not None else SystemClock()
         self._watchers: dict[str, Watcher] = {}
+        self._states: dict[str, State] = {}
         self._due: dict[str, datetime] = {}
+        self._last_check: dict[str, datetime] = {}
         self._commands: queue.SimpleQueue[Command] = queue.SimpleQueue()
+        self._wake = threading.Event()
         self._stop_requested = False
 
     def add(self, watcher: Watcher) -> None:
-        """Start scheduling a watcher; its first check is due immediately.
+        """Start scheduling a watcher; it is active and its first check is due immediately.
 
         Args:
             watcher: Watcher to run every `watcher.interval`.
@@ -48,17 +48,17 @@ class Scheduler:
             msg = f"A watcher named {watcher.name!r} is already scheduled"
             raise ValueError(msg)
         self._watchers[watcher.name] = watcher
+        self._states[watcher.name] = Active()
         self._due[watcher.name] = self._clock.now()
 
     def submit(self, command: Command) -> None:
-        """Queue a command; it is applied at the start of the next `run_pending`.
-
-        Safe to call from any thread: this is how the GUI controls the engine.
+        """Queue a command from any thread and wake `run_forever`, which applies it at once.
 
         Args:
             command: Command to apply.
         """
         self._commands.put(command)
+        self._wake.set()
 
     def statuses(self) -> list[WatcherStatus]:
         """Return the state of every watcher, in the order they were added.
@@ -69,13 +69,21 @@ class Scheduler:
         Returns:
             One status per watcher.
         """
-        raise NotImplementedError
+        return [
+            WatcherStatus(
+                name=name,
+                state=self._states[name].kind,
+                interval=watcher.interval,
+                last_check=self._last_check.get(name),
+            )
+            for name, watcher in self._watchers.items()
+        ]
 
     def next_due(self) -> datetime | None:
         """Return when the next check is due.
 
         Returns:
-            The earliest due time, or None if there are no watchers.
+            The earliest due time, or None if no watcher is checked.
         """
         return min(self._due.values(), default=None)
 
@@ -83,31 +91,30 @@ class Scheduler:
         """Apply the submitted commands, then check every watcher that is due now.
 
         Watchers are checked one after another. A failing check is logged and
-        does not stop the others; the watcher is tried again after its interval.
+        does not stop the others; the watcher's state decides when it is tried again.
 
         Returns:
             Number of watchers that were checked.
         """
         self._apply_commands()
         now = self._clock.now()
-        due = [watcher for name, watcher in self._watchers.items() if self._due[name] <= now]
+        due = [self._watchers[name] for name, due_at in self._due.items() if due_at <= now]
         for watcher in due:
             self._check(watcher)
         return len(due)
 
     def run_forever(self) -> None:
-        """Run due watchers and sleep until the next one, until `stop` is called.
-
-        Returns at once if no watcher was added.
-        """
+        """Check due watchers and wait for the next until `stop`; commands end the wait early."""
         self._stop_requested = False
         while self._watchers and not self._stop_requested:
-            self._clock.sleep(self._seconds_until_next_due())
             self.run_pending()
+            self._clock.wait(self._seconds_until_next_due(), self._wake)
+            self._wake.clear()
 
     def stop(self) -> None:
-        """Make `run_forever` return after the check that is running."""
+        """Make `run_forever` return after the check that is running; safe from any thread."""
         self._stop_requested = True
+        self._wake.set()
 
     def _apply_commands(self) -> None:
         """Apply every submitted command, oldest first."""
@@ -115,52 +122,104 @@ class Scheduler:
             self._apply(self._commands.get())
 
     def _apply(self, command: Command) -> None:
-        """Apply one command.
+        """Apply one command; a command for an unknown watcher is logged and ignored.
 
         Args:
             command: Command taken from the queue.
         """
         match command:
-            case CheckNow(watcher_name=name):
-                self._check_now(name)
-            case Pause() | Resume() | ReloadConfig():
+            case ReloadConfig():
                 raise NotImplementedError
-
-    def _check_now(self, name: str) -> None:
-        """Make a watcher due at once; an unknown name is logged and ignored.
-
-        Args:
-            name: Name of the watcher to check.
-        """
-        if name in self._due:
-            self._due[name] = self._clock.now()
-        else:
-            _logger.warning("Cannot check %r now: no watcher has that name", name)
+            case _ if command.watcher_name not in self._watchers:
+                _logger.warning("Ignoring %r: no watcher has that name", command)
+            case Pause(watcher_name=name):
+                self._set_state(self._watchers[name], Paused())
+                self._schedule(name, None)
+            case Resume(watcher_name=name):
+                self._set_state(self._watchers[name], Active())
+                self._schedule(name, timedelta(0))
+            case CheckNow(watcher_name=name):
+                self._schedule(name, timedelta(0))
 
     def _check(self, watcher: Watcher) -> None:
-        """Run one check and set the watcher's next due time.
-
-        The next check is due one interval after this one ends, whether it
-        succeeded or not. A WatchtowerError is an expected failure that the
-        watcher already publishes on its event bus, so it is only logged at
-        DEBUG; any other exception is a bug and is logged with its traceback.
+        """Run one check, move the watcher to its next state and schedule it.
 
         Args:
             watcher: Watcher to check.
         """
+        ok = self._run_check(watcher)
+        state = self._states[watcher.name]
+        new_state = state.after_success() if ok else state.after_failure()
+        self._set_state(watcher, new_state)
+
+        self._last_check[watcher.name] = self._clock.now()
+        delay = new_state.delay(watcher.interval)
+        self._schedule(watcher.name, delay)
+        if isinstance(new_state, Backoff):
+            _logger.info(
+                "%r failed %d time(s) in a row; next check in %s",
+                watcher.name,
+                new_state.failures,
+                delay,
+            )
+
+    def _run_check(self, watcher: Watcher) -> bool:
+        """Run one check: a WatchtowerError is logged at DEBUG, any other exception as a bug.
+
+        Args:
+            watcher: Watcher to check.
+
+        Returns:
+            True if the check succeeded.
+        """
+        ok = False
         try:
             watcher.check_once()
+            ok = True
         except WatchtowerError as err:
             _logger.debug("Watcher %r failed: %s", watcher.name, err)
         except Exception:
             _logger.exception("Unexpected error in watcher %r", watcher.name)
-        self._due[watcher.name] = self._clock.now() + watcher.interval
+        return ok
 
-    def _seconds_until_next_due(self) -> float:
-        """Return how long to sleep before the earliest due check.
+    def _schedule(self, name: str, delay: timedelta | None) -> None:
+        """Set when a watcher is checked next, counting from now.
+
+        Args:
+            name: Name of the watcher.
+            delay: Time until its next check; None means it is not checked.
+        """
+        if delay is None:
+            self._due.pop(name, None)
+        else:
+            self._due[name] = self._clock.now() + delay
+
+    def _set_state(self, watcher: Watcher, new_state: State) -> None:
+        """Give a watcher a new state and publish WatcherStateChanged if its kind changed.
+
+        Args:
+            watcher: Watcher whose state changes.
+            new_state: Its new state.
+        """
+        old_state = self._states[watcher.name]
+        self._states[watcher.name] = new_state
+        if new_state.kind is not old_state.kind and watcher.event_bus is not None:
+            watcher.event_bus.publish(
+                WatcherStateChanged(
+                    watcher_name=watcher.name,
+                    old_state=old_state.kind,
+                    new_state=new_state.kind,
+                    timestamp=self._clock.now(),
+                )
+            )
+
+    def _seconds_until_next_due(self) -> float | None:
+        """Return how long to wait before the earliest due check.
 
         Returns:
-            Seconds until the next check; 0 if one is already due.
+            Seconds until the next check, 0 if one is already due, or None if
+            no watcher is checked (then only a command ends the wait).
         """
-        wait = min(self._due.values()) - self._clock.now()
-        return max(wait.total_seconds(), 0.0)
+        next_due = self.next_due()
+        until_due = None if next_due is None else next_due - self._clock.now()
+        return None if until_due is None else max(until_due.total_seconds(), 0.0)

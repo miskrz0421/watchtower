@@ -4,18 +4,19 @@ from __future__ import annotations
 
 import logging
 
-from watchtower._events import ChangeDetected, CheckCompleted, EventBus
+from watchtower._events import (
+    ChangeDetected,
+    CheckCompleted,
+    EventBus,
+    WatcherState,
+    WatcherStateChanged,
+)
 
 _logger = logging.getLogger(__name__)
 
 
 class LoggingObserver:
-    """Logs what every watcher does, using the standard `logging` module.
-
-    Successful checks and detected changes are logged at INFO, failed checks
-    at WARNING. FetchFailed is not logged on its own: the CheckCompleted that
-    follows it carries the same error.
-    """
+    """Logs checks, changes and state changes; failures at WARNING (ADR-020, ADR-023)."""
 
     def attach(self, event_bus: EventBus) -> None:
         """Start logging the events published on a bus.
@@ -25,6 +26,7 @@ class LoggingObserver:
         """
         event_bus.subscribe(CheckCompleted, self._log_check)
         event_bus.subscribe(ChangeDetected, self._log_change)
+        event_bus.subscribe(WatcherStateChanged, self._log_state)
 
     def _log_check(self, check: CheckCompleted) -> None:
         """Log the outcome of a finished check.
@@ -49,3 +51,19 @@ class LoggingObserver:
             detected: Event published when the check found changes.
         """
         _logger.info("%r: %s", detected.watcher_name, detected.event.summary)
+
+    def _log_state(self, changed: WatcherStateChanged) -> None:
+        """Log a watcher's move to another state.
+
+        Args:
+            changed: Event published when the watcher changed state.
+        """
+        failing = changed.new_state in (WatcherState.BACKOFF, WatcherState.DISABLED)
+        level = logging.WARNING if failing else logging.INFO
+        _logger.log(
+            level,
+            "%r is now %s (was %s)",
+            changed.watcher_name,
+            changed.new_state,
+            changed.old_state,
+        )

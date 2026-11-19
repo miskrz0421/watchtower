@@ -79,22 +79,24 @@ These are the contracts between the packages. A change to one needs an entry in
 | `CheckCompleted` | After every check (success or failure), with duration | HistoryRecorder, LoggingObserver, GUI |
 | `ChangeDetected` | A ChangeEvent passed the filters | HistoryRecorder, LoggingObserver, GUI Changes tab |
 | `FetchFailed` | A source raised after retries | GUI Log tab |
-| `WatcherStateChanged` | State machine transition | GUI Watchers tab, tray icon |
+| `WatcherStateChanged` | State machine transition (published by the Scheduler) | LoggingObserver, GUI Watchers tab, tray icon |
 
 ## Watcher state machine
 
 ```
-           tick() ok                     fetch fails
+           check ok                      check fails
  ┌──────── Active ◄──────────┐   Active ───────────► Backoff (delay × 2 each failure, capped)
  │                           │                          │
- │ pause()          resume() │          recovers        │  N failures in a row
+ │ Pause            Resume   │          recovers        │  5th failure in a row
  ▼                           │   Active ◄───────────────┤
 Paused ──────────────────────┘                          ▼
                                                     Disabled (user alerted)
 ```
 
-Each state is an object that decides what `tick()` does (State pattern). `Disabled` only
-leaves via an explicit `Resume`.
+Each state is an object (State pattern, ADR-023): `delay(interval)` says when the watcher is
+checked next (None: not at all), and `after_success()` / `after_failure()` give the state that
+follows a check. The Scheduler keeps one per watcher and publishes `WatcherStateChanged` when the
+kind changes. `Paused` and `Disabled` only leave via an explicit `Resume`.
 
 ## Storage (SQLite, one file)
 

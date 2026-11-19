@@ -326,6 +326,9 @@ PR that makes the decision.
   observer, expected failures are visible only at DEBUG, so the CLI always attaches a
   `LoggingObserver` to `run`. `stop()` called from another thread takes effect after the current
   sleep; M5 can replace the sleep with an event wait if that is too slow.
+- Note (M4): the sleep is now `Clock.wait(seconds, wake)`. `submit` and `stop` set the wake
+  event, so the loop applies a command or returns at once instead of after the wait (ADR-023).
+  The loop checks the due watchers first and then waits, so `stop` never starts another round.
 
 ## ADR-021: History storage schema and streaming generator queries
 - Status: accepted · M3
@@ -401,6 +404,11 @@ PR that makes the decision.
   lock. A command waits until the loop wakes up, so `run_forever` must stop sleeping when a command
   arrives; the states PR replaces the sleep with a wait that `submit` and `stop` interrupt (the
   M5 change ADR-020 mentions). Tests submit a command and call `run_pending` with a `FakeClock`.
+- Note (M4, states PR): the backoff cap is one hour or the watcher's own interval, whichever is
+  longer, so a daily watcher in backoff is not checked more often than when it works. A watcher
+  in `Backoff` is logged at INFO after every failure with its failure count and next wait, and
+  `LoggingObserver` logs `WatcherStateChanged` (WARNING for Backoff and Disabled, INFO
+  otherwise), so `watchtower run` shows the whole Active → Backoff → Active cycle.
 
 ## ADR-024: GUI threading and the bridge contract
 - Status: accepted · M5
