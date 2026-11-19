@@ -8,20 +8,21 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 
 from PySide6.QtCore import QTimer
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QSystemTrayIcon
 
 from watchtower._events import EventBus
 from watchtower.core._scheduler import Scheduler
 from watchtower.gui._bridge import EngineBridge
 from watchtower.gui._engine import EngineThread
 from watchtower.gui._main_window import MainWindow
+from watchtower.gui._tray import TrayIcon
 from watchtower.storage._history import HistoryStore
 
 _PYTHON_WAKE_UP_MS = 200
 
 
 def run_gui(scheduler: Scheduler, event_bus: EventBus, history: HistoryStore | None) -> int:
-    """Show the window and run the scheduler in an EngineThread until the window closes or Ctrl+C.
+    """Show the window and tray icon and run the scheduler in an EngineThread until Quit or Ctrl+C.
 
     Args:
         scheduler: Scheduler with every watcher added, not running yet.
@@ -35,9 +36,13 @@ def run_gui(scheduler: Scheduler, event_bus: EventBus, history: HistoryStore | N
     bridge = EngineBridge()
     bridge.attach(event_bus)
     window = MainWindow(bridge, scheduler, history)
+    tray = TrayIcon(bridge, scheduler, window)
     engine = EngineThread(scheduler)
+    # With a tray, closing the window only hides it; Quit in the tray menu ends the app.
+    app.setQuitOnLastWindowClosed(not QSystemTrayIcon.isSystemTrayAvailable())
 
     window.show()
+    tray.show()
     engine.start()
     with _ctrl_c_quits(app):
         exit_code = app.exec()
