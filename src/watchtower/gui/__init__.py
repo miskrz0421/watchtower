@@ -8,5 +8,6 @@ from watchtower.gui._app import run_gui
 from watchtower.gui._bridge import EngineBridge
 from watchtower.gui._engine import EngineThread
 from watchtower.gui._main_window import MainWindow
+from watchtower.gui._tray import TrayIcon
 
-__all__ = ["EngineBridge", "EngineThread", "MainWindow", "run_gui"]
+__all__ = ["EngineBridge", "EngineThread", "MainWindow", "TrayIcon", "run_gui"]

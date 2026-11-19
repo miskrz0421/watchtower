@@ -158,7 +158,7 @@ def _run_command(args: argparse.Namespace) -> int:
 
 
 def _gui_command(args: argparse.Namespace) -> int:
-    """Run the watchers of a config file in the desktop app until its window is closed.
+    """Run the watchers of a config file in the tray app until Quit.
 
     Args:
         args: Parsed arguments with the `config` path.

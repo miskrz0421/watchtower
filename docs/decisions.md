@@ -446,3 +446,8 @@ PR that makes the decision.
   so building watchers from a config stays in one place (`cli.py`) for `run` and `gui`. It builds
   the bridge and the window before `EngineThread` starts, so the tabs read `Scheduler.statuses()`
   while nothing else runs, and stops the engine after the Qt event loop returns.
+- Note (M5, tray PR): `TrayIcon` reads `Scheduler.statuses()` once and then follows
+  `state_changed`. Its colour is the worst state (red Disabled, orange Backoff, grey when all are
+  paused, green otherwise) and the tooltip counts the states. Pause all / Resume all submit one
+  command per watcher. When the desktop has a tray, closing the window only hides it and the tray's
+  Quit ends the app; without one, closing the window quits as before.
