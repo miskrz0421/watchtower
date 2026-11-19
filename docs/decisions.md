@@ -442,3 +442,7 @@ PR that makes the decision.
   or calls a model's methods directly. Reading the history from the GUI thread is safe because
   `HistoryStore` opens a connection per call (ADR-021). `desktop-notifier` is one more dependency;
   it goes into an optional extra and the `dev` group, not into the core (ADR-003).
+- Note (M5, engine PR): `run_gui(scheduler, event_bus, history)` gets everything built by the CLI,
+  so building watchers from a config stays in one place (`cli.py`) for `run` and `gui`. It builds
+  the bridge and the window before `EngineThread` starts, so the tabs read `Scheduler.statuses()`
+  while nothing else runs, and stops the engine after the Qt event loop returns.

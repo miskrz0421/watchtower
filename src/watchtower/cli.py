@@ -57,6 +57,21 @@ def _build_watchers(config: Config, event_bus: EventBus) -> list[Watcher]:
     return [builder.store(store).event_bus(event_bus).build() for builder in config.watchers]
 
 
+def _scheduler_for(watchers: list[Watcher]) -> Scheduler:
+    """Return a scheduler with every watcher added.
+
+    Args:
+        watchers: Watchers to schedule.
+
+    Returns:
+        The scheduler, not running yet.
+    """
+    scheduler = Scheduler()
+    for watcher in watchers:
+        scheduler.add(watcher)
+    return scheduler
+
+
 def _describe_check(watcher_name: str, is_first_run: bool, event: ChangeEvent | None) -> str:
     """Say in one line what a check found.
 
@@ -130,10 +145,8 @@ def _run_command(args: argparse.Namespace) -> int:
     """
     event_bus = EventBus()
     LoggingObserver().attach(event_bus)
-    scheduler = Scheduler()
     watchers = _build_watchers(load_config(args.config), event_bus)
-    for watcher in watchers:
-        scheduler.add(watcher)
+    scheduler = _scheduler_for(watchers)
 
     _configure_logging()
     print(f"Running {len(watchers)} watcher(s). Press Ctrl+C to stop.")
@@ -145,7 +158,7 @@ def _run_command(args: argparse.Namespace) -> int:
 
 
 def _gui_command(args: argparse.Namespace) -> int:
-    """Run the watchers of a config file in the tray app until Quit.
+    """Run the watchers of a config file in the desktop app until its window is closed.
 
     Args:
         args: Parsed arguments with the `config` path.
@@ -159,7 +172,14 @@ def _gui_command(args: argparse.Namespace) -> int:
     # Imported here, so the other commands work without the gui extra (ADR-003).
     from watchtower.gui import run_gui
 
-    return run_gui(args.config)
+    config = load_config(args.config)
+    event_bus = EventBus()
+    LoggingObserver().attach(event_bus)
+    scheduler = _scheduler_for(_build_watchers(config, event_bus))
+    history = HistoryStore(config.database) if config.database is not None else None
+
+    _configure_logging()
+    return run_gui(scheduler, event_bus, history)
 
 
 def _report_command(args: argparse.Namespace) -> int:
