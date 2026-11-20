@@ -8,7 +8,7 @@ from textwrap import dedent
 
 import pytest
 
-from watchtower import Change, ChangeKind, ConfigError, Item
+from watchtower import Change, ChangeKind, ConfigError, Item, MissingDependencyError
 from watchtower.config import Config, load_config
 from watchtower.core import WatcherBuilder
 from watchtower.diffs import ItemDiff, TextDiff
@@ -200,6 +200,27 @@ def test_read_yaml_os_error_raises_config_error(
     monkeypatch.setattr(Path, "open", mock_open)
     with pytest.raises(ConfigError, match="Cannot read config file"):
         load_config(file)
+
+
+def test_missing_optional_dependency_is_config_error(
+    tmp_path: Path, no_desktop_notifier: None
+) -> None:
+    """A plugin needing an absent extra fails as ConfigError with watcher context."""
+    config_file = _write_config(
+        tmp_path,
+        dedent("""
+            watchers:
+              - name: Flat alerts
+                source: { type: fake, contents: ["offer"] }
+                diff: { type: text }
+                notify: [{ type: desktop }]
+        """),
+    )
+
+    with pytest.raises(ConfigError, match="Watcher 'Flat alerts' key 'notify'") as caught:
+        load_config(config_file)
+
+    assert isinstance(caught.value.__cause__, MissingDependencyError)
 
 
 @pytest.mark.parametrize(

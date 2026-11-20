@@ -9,7 +9,7 @@ from typing import Any
 
 import yaml
 
-from watchtower._errors import ConfigError
+from watchtower._errors import ConfigError, MissingDependencyError
 from watchtower._registry import (
     create_differ,
     create_notifier,
@@ -139,7 +139,7 @@ def _build_component[T](
     params = {k: v for k, v in config.items() if k != "type"}
     try:
         return factory(plugin_type, **params)
-    except (TypeError, ValueError) as err:
+    except (TypeError, ValueError, MissingDependencyError) as err:
         msg = f"Watcher {watcher_name!r} key {key_name!r}: {err}"
         raise ConfigError(msg) from err
 
