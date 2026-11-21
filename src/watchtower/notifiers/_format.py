@@ -17,13 +17,26 @@ def change_text(change: Change) -> str:
     if change.kind == ChangeKind.TEXT and change.diff_text:
         text = f"--- Diff ---\n{change.diff_text.removesuffix('\n')}"
     elif change.item is not None:
-        text = item_line(change.kind, change.item, change.before)
+        text = _item_line(change.kind, change.item, change.before)
     else:
         text = change.kind.value.capitalize()
     return text
 
 
-def item_line(kind: ChangeKind, item: Item, before: Item | None) -> str:
+def truncate(text: str, limit: int) -> str:
+    """Cut text to at most `limit` characters, ending with '…' when it was cut.
+
+    Args:
+        text: Text to shorten.
+        limit: Maximum length of the result.
+
+    Returns:
+        The text unchanged if it fits, otherwise its start followed by '…'.
+    """
+    return text if len(text) <= limit else text[: limit - 1] + "…"
+
+
+def _item_line(kind: ChangeKind, item: Item, before: Item | None) -> str:
     """Describe an item change in one line, e.g. 'Changed: Flat, 2 800 zł → 2 600 zł'.
 
     Args:

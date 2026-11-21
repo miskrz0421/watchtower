@@ -36,7 +36,7 @@ def test_desktop_plugin_is_registered_by_import() -> None:
 
 def test_desktop_notifier_requires_extra(no_desktop_notifier: None) -> None:
     """A missing desktop-notifier package explains how to install it."""
-    with pytest.raises(MissingDependencyError):
+    with pytest.raises(MissingDependencyError, match="uv sync --extra desktop"):
         DesktopNotifier()
 
 

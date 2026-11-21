@@ -9,7 +9,7 @@ from watchtower._http import DEFAULT_TIMEOUT_SECONDS, USER_AGENT
 from watchtower._models import ChangeEvent
 from watchtower._registry import register_notifier
 from watchtower.notifiers._base import Notifier
-from watchtower.notifiers._format import change_text
+from watchtower.notifiers._format import change_text, truncate
 
 # Discord webhooks reject messages longer than 2000 characters.
 _MAX_CONTENT_LENGTH = 2000
@@ -51,9 +51,7 @@ class DiscordNotifier(Notifier):
         """
         lines = [f"**{event.watcher_name}: {event.summary}**"]
         lines.extend(change_text(change) for change in event.changes)
-        message = "\n".join(lines)
-        if len(message) > _MAX_CONTENT_LENGTH:
-            message = message[: _MAX_CONTENT_LENGTH - 1] + "…"
+        message = truncate("\n".join(lines), _MAX_CONTENT_LENGTH)
 
         try:
             with httpx.Client(

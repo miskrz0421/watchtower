@@ -8,11 +8,11 @@ from watchtower._errors import MissingDependencyError, NotifyError
 from watchtower._models import ChangeEvent
 from watchtower._registry import register_notifier
 from watchtower.notifiers._base import Notifier
-from watchtower.notifiers._format import change_text
+from watchtower.notifiers._format import change_text, truncate
 
 # WinRT toast XML has a ~30 KB payload limit. Stay far below it: escaping can
 # expand the text, and desktop popups truncate long messages visually anyway.
-MAX_MESSAGE_LENGTH = 2000
+_MAX_MESSAGE_LENGTH = 2000
 
 
 class _NotificationBackend(Protocol):
@@ -60,8 +60,8 @@ class DesktopNotifier(Notifier):
                 from desktop_notifier.sync import DesktopNotifierSync
             except ImportError as e:
                 msg = (
-                    "DesktopNotifier requires the desktop-notifier package"
-                    "which is included in the `desktop` extras group"
+                    "DesktopNotifier requires the desktop-notifier package; "
+                    "install it with `uv sync --extra desktop`"
                 )
                 raise MissingDependencyError(msg) from e
             backend = DesktopNotifierSync(app_name="watchtower")
@@ -82,8 +82,7 @@ class DesktopNotifier(Notifier):
         """
         title = f"{event.watcher_name}: {event.summary}"
         message = "\n".join(change_text(change) for change in event.changes)
-        if len(message) > MAX_MESSAGE_LENGTH:
-            message = message[: MAX_MESSAGE_LENGTH - 1] + "…"
+        message = truncate(message, _MAX_MESSAGE_LENGTH)
         try:
             self._backend.send(title, message)
         except Exception as e:
