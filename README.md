@@ -91,6 +91,10 @@ watchers:
       - { type: discord, webhook_url: "${DISCORD_WEBHOOK_URL}" }
 ```
 
+Set `DISCORD_WEBHOOK_URL` in the environment before loading this config: the loader replaces
+`${NAME}` placeholders with environment values and raises `ConfigError` if one is missing, so
+secrets stay out of the file.
+
 ## Project structure
 
 ```
