@@ -9,8 +9,8 @@ import pytest
 
 from conftest import FakeListings
 from watchtower import Item, SourceError
+from watchtower._http import USER_AGENT
 from watchtower.sources import HttpSource, JSONAPISource, RSSSource, WebPageSource
-from watchtower.sources._http import USER_AGENT
 
 
 class PlainHttpSource(HttpSource):

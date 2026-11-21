@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from datetime import UTC, datetime
 
 import httpx
@@ -17,7 +18,10 @@ from watchtower import (
     create_notifier,
     list_plugins,
 )
+from watchtower.core import Watcher
+from watchtower.diffs import TextDiff
 from watchtower.notifiers import DiscordNotifier
+from watchtower.sources import FakeSource
 
 WEBHOOK_URL = "https://discord.com/api/webhooks/1234/top-secret-token"
 
@@ -110,29 +114,50 @@ def test_send_uses_configured_timeout() -> None:
 
 
 def test_http_error_raises_notify_error_without_leaking_the_webhook() -> None:
-    """A rejected webhook request raises NotifyError without exposing the secret URL."""
+    """A rejected webhook reports only the status, with the failing request suppressed."""
     transport = httpx.MockTransport(lambda request: httpx.Response(400, text="Bad Request"))
     notifier = DiscordNotifier(WEBHOOK_URL, transport=transport)
 
-    with pytest.raises(NotifyError, match="Could not send Discord notification") as caught:
+    with pytest.raises(NotifyError, match="Discord webhook returned HTTP 400") as caught:
         notifier.send(_event())
 
-    assert isinstance(caught.value.__cause__, httpx.HTTPStatusError)
-    assert "top-secret-token" not in str(caught.value)
+    assert caught.value.__cause__ is None
+    assert str(caught.value) == "Discord webhook returned HTTP 400"
 
 
-def test_connection_error_raises_notify_error() -> None:
-    """A network failure is wrapped just like an HTTP error response."""
+def test_connection_error_raises_notify_error_without_leaking_the_webhook() -> None:
+    """A network failure reports only its exception class, with the cause suppressed."""
 
     def fail(request: httpx.Request) -> httpx.Response:
         raise httpx.ConnectError("no route to host")
 
     notifier = DiscordNotifier(WEBHOOK_URL, transport=httpx.MockTransport(fail))
 
-    with pytest.raises(NotifyError, match="Could not send Discord notification") as caught:
+    with pytest.raises(NotifyError, match="Discord webhook failed: ConnectError") as caught:
         notifier.send(_event())
 
-    assert isinstance(caught.value.__cause__, httpx.ConnectError)
+    assert caught.value.__cause__ is None
+    assert str(caught.value) == "Discord webhook failed: ConnectError"
+
+
+def test_watcher_logs_webhook_failure_without_the_secret(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The watcher's error log contains the safe message but never the webhook token."""
+    transport = httpx.MockTransport(lambda request: httpx.Response(500))
+    watcher = Watcher(
+        name="cheap flats",
+        source=FakeSource(contents=["version 1\n", "version 2\n"]),
+        differ=TextDiff(),
+        notifiers=[DiscordNotifier(WEBHOOK_URL, transport=transport)],
+    )
+    watcher.check_once()  # first check establishes the baseline
+
+    with caplog.at_level(logging.ERROR, logger="watchtower.core._watcher"):
+        watcher.check_once()  # second check detects a change and notifies
+
+    assert "Discord webhook returned HTTP 500" in caplog.text
+    assert "top-secret-token" not in caplog.text
 
 
 def test_send_truncates_message_to_discord_limit() -> None:

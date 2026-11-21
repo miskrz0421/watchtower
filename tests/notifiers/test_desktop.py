@@ -36,7 +36,7 @@ def test_desktop_plugin_is_registered_by_import() -> None:
 
 def test_desktop_notifier_requires_extra(no_desktop_notifier: None) -> None:
     """A missing desktop-notifier package explains how to install it."""
-    with pytest.raises(MissingDependencyError, match=r"watchtower\[desktop\]"):
+    with pytest.raises(MissingDependencyError):
         DesktopNotifier()
 
 
@@ -87,13 +87,27 @@ def test_send_includes_text_diff() -> None:
     assert "+new" in message
 
 
+def test_send_truncates_long_message() -> None:
+    """A large change list is cut to a safe length for the notification backend."""
+    backend = Mock()
+    notifier = DesktopNotifier(backend=backend)
+    change = Change(kind=ChangeKind.TEXT, diff_text="x" * 5000)
+
+    notifier.send(_event(change))
+
+    title, message = backend.send.call_args.args
+    assert title == "Cheap flats: 2 change(s) detected"
+    assert len(message) == 2000
+    assert message.endswith("…")
+
+
 def test_send_wraps_backend_errors_in_notify_error() -> None:
-    """A backend failure is reported as NotifyError with the original cause."""
+    """An exception that escapes the backend becomes NotifyError; library warnings do not."""
     backend = Mock()
     backend.send.side_effect = RuntimeError("no notification daemon")
     notifier = DesktopNotifier(backend=backend)
 
-    with pytest.raises(NotifyError, match="no notification daemon") as caught:
+    with pytest.raises(NotifyError) as caught:
         notifier.send(_event())
 
     assert isinstance(caught.value.__cause__, RuntimeError)

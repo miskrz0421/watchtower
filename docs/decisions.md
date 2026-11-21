@@ -49,6 +49,10 @@ PR that makes the decision.
   mypy and the tests of `reports/` need them. `watchtower.gui` and `watchtower.reports` are
   imported only inside the `gui` and `report` CLI commands, so the other commands still run
   without the extras.
+- Note (M5): desktop-notifier is another extra dependecy in the new `desktop` group.
+  `MissingDependencyError` is a new public error and a new pattern: optional packages are 
+  imported inside `__init__` and a missing one becomes `ConfigError` when building a Watcher
+  from a config.
 
 ## ADR-004: First run is a baseline
 - Status: accepted · M1
@@ -457,3 +461,10 @@ PR that makes the decision.
   paused, green otherwise) and the tooltip counts the states. Pause all / Resume all submit one
   command per watcher. When the desktop has a tray, closing the window only hides it and the tray's
   Quit ends the app; without one, closing the window quits as before.
+- Note (M5, notifiers): desktop delivery is best-effort. `desktop-notifier` does not raise
+  when scheduling fails: it logs a warning with a traceback ("Notification failed") and `send()`
+  still returns an identifier. KDE, for instance, reports DBus "Created too many similar
+  notifications in quick succession" this way. `DesktopNotifier` does not turn those warnings into
+  `NotifyError`; its `NotifyError` branch only covers exceptions that actually propagate out of the
+  backend. Checking the returned identifier would not help, because the library returns one either
+  way.

@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import builtins
 import json
+import sys
 import threading
 from collections.abc import Iterator
 from dataclasses import dataclass
@@ -48,12 +48,4 @@ def fake_listings(tmp_path: Path) -> Iterator[FakeListings]:
 @pytest.fixture
 def no_desktop_notifier(monkeypatch: pytest.MonkeyPatch) -> None:
     """Simulate an install without the optional desktop-notifier package."""
-    real_import = builtins.__import__
-
-    def import_without_desktop(name: str, *args: Any, **kwargs: Any) -> Any:
-        if name == "desktop_notifier.sync":
-            msg = "No module named 'desktop_notifier'"
-            raise ImportError(msg)
-        return real_import(name, *args, **kwargs)
-
-    monkeypatch.setattr(builtins, "__import__", import_without_desktop)
+    monkeypatch.setitem(sys.modules, "desktop_notifier.sync", None)

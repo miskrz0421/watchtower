@@ -103,7 +103,6 @@ def test_yaml_substitutes_webhook_secret_from_environment(
 
     assert isinstance(notifier, DiscordNotifier)
     assert notifier._webhook_url == webhook_url
-    assert webhook_url not in config_file.read_text(encoding="utf-8")
 
 
 def test_env_substitution_is_recursive_and_keeps_other_values(

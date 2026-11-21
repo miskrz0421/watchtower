@@ -100,7 +100,7 @@ def test_check_reports_missing_optional_dependency(
     assert main(["check", str(config)]) == 1
     err = capsys.readouterr().err
     assert "Error: Watcher 'Notes' key 'notify'" in err
-    assert "watchtower[desktop]" in err
+    assert "requires the desktop-notifier package" in err
 
 
 def test_check_reports_file_change_between_runs(
