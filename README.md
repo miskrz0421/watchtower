@@ -70,7 +70,8 @@ just watchtower run examples/config.yaml    # terminal 2: checks every 30 s / 1 
 
 `just watchtower check examples/config.yaml` checks every watcher once instead. Snapshots and
 the history of checks and changes are kept in the SQLite file named by `database`
-(`examples/watchtower.db`), so a restart does not report old changes again.
+(`examples/watchtower.db`, delete the file after upgrading if you see `no column named diff_text`),
+so a restart does not report old changes again.
 
 See [examples/fake_listings/README.md](examples/fake_listings/README.md) for the server.
 

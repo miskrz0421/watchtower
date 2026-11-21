@@ -470,4 +470,5 @@ PR that makes the decision.
 - Alternatives: storing diff text in separate files beside the database (scatters data across the filesystem);
   full database migrations using Alembic or schema version tables (unnecessary complexity before 1.0 release).
 - Consequences: text watcher changes preserve unified diffs in the history; `ChangeRecord` carries
-  `diff_text` for the GUI Changes tab and reporting.
+  `diff_text` for the GUI Changes tab and reporting. Any existing development database (such as
+  `examples/watchtower.db`) should be deleted after upgrading if `no column named diff_text` appears.

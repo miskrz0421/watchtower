@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from datetime import datetime
+from typing import NamedTuple
 
 from PySide6.QtCore import (
     QAbstractTableModel,
@@ -16,6 +16,7 @@ from PySide6.QtCore import (
 )
 from PySide6.QtGui import QFontDatabase
 from PySide6.QtWidgets import (
+    QHeaderView,
     QLineEdit,
     QPlainTextEdit,
     QSplitter,
@@ -25,36 +26,23 @@ from PySide6.QtWidgets import (
 )
 
 from watchtower._events import ChangeDetected
-from watchtower._models import Change
 from watchtower.gui._bridge import EngineBridge
-from watchtower.storage._history import ChangeRecord, HistoryStore
+from watchtower.storage import ChangeRecord, HistoryStore
 
 _COLUMNS: tuple[str, ...] = ("Time", "Watcher", "Kind", "Item", "Price")
 _ROOT_INDEX = QModelIndex()
 
 
-def _change_to_record(watcher_name: str, timestamp: datetime, change: Change) -> ChangeRecord:
-    """Convert a Change from an event into a ChangeRecord.
+def _format_time(record: ChangeRecord) -> str:
+    """Return the change timestamp formatted in the local timezone.
 
     Args:
-        watcher_name: Name of the watcher reporting the change.
-        timestamp: Time when the change was detected.
-        change: Change object from the event.
+        record: ChangeRecord containing the UTC timestamp.
 
     Returns:
-        A ChangeRecord representation.
+        Formatted date and time string in local timezone.
     """
-    item = change.item if change.item is not None else change.before
-    return ChangeRecord(
-        watcher_name=watcher_name,
-        timestamp=timestamp,
-        kind=change.kind,
-        key=item.key if item is not None else None,
-        title=item.title if item is not None else None,
-        price=change.item.price if change.item is not None else None,
-        old_price=change.before.price if change.before is not None else None,
-        diff_text=change.diff_text,
-    )
+    return record.timestamp.astimezone().strftime("%Y-%m-%d %H:%M:%S")
 
 
 def _format_item(record: ChangeRecord) -> str:
@@ -69,6 +57,20 @@ def _format_item(record: ChangeRecord) -> str:
     return record.title or record.key or ("(text diff)" if record.diff_text else "")
 
 
+def _format_price_val(price: float) -> str:
+    """Format a numeric price value cleanly without trailing .0.
+
+    Args:
+        price: Price amount to format.
+
+    Returns:
+        Formatted price string in zł.
+    """
+    if price.is_integer():
+        return f"{int(price)} zł"
+    return f"{price:,.2f}".replace(".", ",") + " zł"
+
+
 def _format_price(record: ChangeRecord) -> str:
     """Return a display string for the price or price change.
 
@@ -79,12 +81,40 @@ def _format_price(record: ChangeRecord) -> str:
         Formatted price transition, current price, or an empty string.
     """
     if record.price is not None and record.old_price is not None:
-        return f"{record.old_price} -> {record.price}"
+        return f"{_format_price_val(record.old_price)} → {_format_price_val(record.price)}"
     if record.price is not None:
-        return str(record.price)
+        return _format_price_val(record.price)
     if record.old_price is not None:
-        return f"(was {record.old_price})"
+        return f"(was {_format_price_val(record.old_price)})"
     return ""
+
+
+class _ChangeRow(NamedTuple):
+    """Rendered table row for a single change record."""
+
+    time: str
+    watcher: str
+    kind: str
+    item: str
+    price: str
+
+
+def _format_row(record: ChangeRecord) -> _ChangeRow:
+    """Format a ChangeRecord into a structured table row matching `_COLUMNS`.
+
+    Args:
+        record: ChangeRecord to extract cell values from.
+
+    Returns:
+        Rendered change row for display.
+    """
+    return _ChangeRow(
+        time=_format_time(record),
+        watcher=record.watcher_name,
+        kind=record.kind.value,
+        item=_format_item(record),
+        price=_format_price(record),
+    )
 
 
 def _format_details(record: ChangeRecord) -> str:
@@ -98,7 +128,7 @@ def _format_details(record: ChangeRecord) -> str:
     """
     lines = [
         f"Watcher: {record.watcher_name}",
-        f"Timestamp: {record.timestamp.strftime('%Y-%m-%d %H:%M:%S')}",
+        f"Timestamp: {_format_time(record)}",
         f"Kind: {record.kind.value}",
     ]
     if record.key:
@@ -189,28 +219,13 @@ class ChangesTableModel(QAbstractTableModel):
         """
         if not index.isValid() or role != int(Qt.ItemDataRole.DisplayRole):
             return None
-        record = self._record_at(index.row())
-        if record is None:
-            return None
-        match index.column():
-            case 0:
-                return record.timestamp.strftime("%Y-%m-%d %H:%M:%S")
-            case 1:
-                return record.watcher_name
-            case 2:
-                return record.kind.value
-            case 3:
-                return _format_item(record)
-            case 4:
-                return _format_price(record)
-            case _:
-                return None
+        return _format_row(self._rows[index.row()])[index.column()]
 
-    def _record_at(self, row: int) -> ChangeRecord | None:
-        """Return the change record at the given row index.
+    def record_at(self, row: int) -> ChangeRecord | None:
+        """Return the change record at the given source model row index.
 
         Args:
-            row: Zero-based row index.
+            row: Zero-based row index in this model.
 
         Returns:
             The ChangeRecord, or None if the index is out of bounds.
@@ -226,8 +241,7 @@ class ChangesTableModel(QAbstractTableModel):
             records: Saved changes, oldest first, as `HistoryStore.changes()` yields them.
         """
         self.beginResetModel()
-        self._rows = list(records)
-        self._rows.reverse()
+        self._rows = list(records)[::-1]
         self.endResetModel()
 
     def add_event(self, detected: ChangeDetected) -> None:
@@ -237,7 +251,7 @@ class ChangesTableModel(QAbstractTableModel):
             detected: Event published when a check found changes.
         """
         new_records = [
-            _change_to_record(detected.watcher_name, detected.event.timestamp, change)
+            ChangeRecord.from_change(detected.watcher_name, detected.event.timestamp, change)
             for change in detected.event.changes
         ]
         if not new_records:
@@ -287,9 +301,7 @@ class ChangesTab(QWidget):
         self._table.setModel(self._proxy)
         self._table.setSelectionBehavior(QTableView.SelectionBehavior.SelectRows)
         self._table.setSelectionMode(QTableView.SelectionMode.SingleSelection)
-        header = self._table.horizontalHeader()
-        if header is not None:
-            header.setStretchLastSection(True)
+        self._table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
         splitter.addWidget(self._table)
 
         self._details = QPlainTextEdit(self)
@@ -299,8 +311,7 @@ class ChangesTab(QWidget):
         splitter.addWidget(self._details)
 
         selection_model = self._table.selectionModel()
-        if selection_model is not None:
-            selection_model.selectionChanged.connect(self._on_selection_changed)
+        selection_model.selectionChanged.connect(self._on_selection_changed)
 
     def _on_search_changed(self, text: str) -> None:
         """Filter table rows matching the search text.
@@ -326,8 +337,6 @@ class ChangesTab(QWidget):
             self._details.clear()
             return
         source_index = self._proxy.mapToSource(indexes[0])
-        record = self._model._record_at(source_index.row())
-        if record is None:
-            self._details.clear()
-            return
-        self._details.setPlainText(_format_details(record))
+        record = self._model.record_at(source_index.row())
+        if record is not None:
+            self._details.setPlainText(_format_details(record))

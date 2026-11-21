@@ -7,11 +7,13 @@ from pathlib import Path
 
 import pytest
 from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QLineEdit, QPlainTextEdit, QTableView
 from pytestqt.qtbot import QtBot
 
 from watchtower import Change, ChangeDetected, ChangeEvent, ChangeKind, Item
 from watchtower.gui import EngineBridge
 from watchtower.gui.tabs import ChangesTab, ChangesTableModel
+from watchtower.gui.tabs._changes import _format_price
 from watchtower.storage import ChangeRecord, HistoryStore
 
 pytestmark = pytest.mark.gui
@@ -31,7 +33,7 @@ def test_model_empty_on_creation() -> None:
     assert model.headerData(5, Qt.Orientation.Horizontal) is None
     assert model.headerData(0, Qt.Orientation.Vertical) is None
     assert model.data(model.index(0, 0)) is None
-    assert model._record_at(0) is None
+    assert model.record_at(0) is None
 
 
 def test_model_load_from_history_reverses_order_to_newest_first(tmp_path: Path) -> None:
@@ -71,12 +73,35 @@ def test_model_load_from_history_reverses_order_to_newest_first(tmp_path: Path) 
     assert model.data(model.index(0, 1)) == "w2"
     assert model.data(model.index(0, 2)) == "changed"
     assert model.data(model.index(0, 3)) == "Second Item"
-    assert model.data(model.index(0, 4)) == "300.0 -> 250.0"
+    assert model.data(model.index(0, 4)) == "300 zł → 250 zł"
 
     # Row 1 is the oldest (w1 at 10:00)
     assert model.data(model.index(1, 1)) == "w1"
     assert model.data(model.index(1, 2)) == "new"
     assert model.data(model.index(1, 3)) == "First Item"
+
+
+def test_model_displays_timestamps_in_local_timezone() -> None:
+    """Test that the Time column converts UTC timestamps to local time."""
+    utc_time = datetime(2026, 11, 15, 12, 0, tzinfo=UTC)
+    expected_local = utc_time.astimezone().strftime("%Y-%m-%d %H:%M:%S")
+
+    model = ChangesTableModel()
+    model.load(
+        [
+            ChangeRecord(
+                watcher_name="w1",
+                timestamp=utc_time,
+                kind=ChangeKind.NEW,
+                key="k1",
+                title="Item",
+                price=None,
+                old_price=None,
+            )
+        ]
+    )
+
+    assert model.data(model.index(0, 0)) == expected_local
 
 
 def test_model_add_event_inserts_row_at_top() -> None:
@@ -113,17 +138,68 @@ def test_model_add_event_inserts_row_at_top() -> None:
     assert model.data(model.index(0, 1)) == "w2"
     assert model.data(model.index(0, 2)) == "text"
     assert model.data(model.index(0, 3)) == "(text diff)"
-    record = model._record_at(0)
+    record = model.record_at(0)
     assert record is not None
     assert record.diff_text == "@@ -1 +1 @@\n-a\n+b"
 
-    # Empty event does not add rows
+
+def test_model_add_empty_event_does_nothing() -> None:
+    """Test that add_event with no changes does not insert any rows."""
+    model = ChangesTableModel()
+    now = datetime(2026, 11, 15, 12, 0, tzinfo=UTC)
+
     empty_detected = ChangeDetected(
-        watcher_name="w2",
-        event=ChangeEvent(watcher_name="w2", timestamp=now, changes=(), summary="empty"),
+        watcher_name="w1",
+        event=ChangeEvent(watcher_name="w1", timestamp=now, changes=(), summary="empty"),
     )
     model.add_event(empty_detected)
-    assert model.rowCount() == 2
+
+    assert model.rowCount() == 0
+
+
+def test_format_price_handles_all_price_variants() -> None:
+    """Test that _format_price formats transitions, current, removed and missing prices."""
+    now = datetime(2026, 11, 15, 12, 0, tzinfo=UTC)
+
+    changed = ChangeRecord("w", now, ChangeKind.CHANGED, "k", "t", price=250.0, old_price=300.0)
+    assert _format_price(changed) == "300 zł → 250 zł"
+
+    decimal_changed = ChangeRecord(
+        "w", now, ChangeKind.CHANGED, "k", "t", price=250.5, old_price=299.99
+    )
+    assert _format_price(decimal_changed) == "299,99 zł → 250,50 zł"
+
+    new_item = ChangeRecord("w", now, ChangeKind.NEW, "k", "t", price=50.0, old_price=None)
+    assert _format_price(new_item) == "50 zł"
+
+    removed = ChangeRecord("w", now, ChangeKind.REMOVED, "k", "t", price=None, old_price=40.0)
+    assert _format_price(removed) == "(was 40 zł)"
+
+    no_price = ChangeRecord("w", now, ChangeKind.TEXT, None, None, price=None, old_price=None)
+    assert _format_price(no_price) == ""
+
+
+def test_change_record_from_change_factory() -> None:
+    """Test that ChangeRecord.from_change populates all fields accurately."""
+    now = datetime(2026, 11, 15, 12, 0, tzinfo=UTC)
+    change = Change(
+        kind=ChangeKind.CHANGED,
+        item=Item(key="k1", title="Title", price=20.0),
+        before=Item(key="k1", title="Title", price=25.0),
+        diff_text="diff",
+    )
+    record = ChangeRecord.from_change("watcher", now, change)
+
+    assert record == ChangeRecord(
+        watcher_name="watcher",
+        timestamp=now,
+        kind=ChangeKind.CHANGED,
+        key="k1",
+        title="Title",
+        price=20.0,
+        old_price=25.0,
+        diff_text="diff",
+    )
 
 
 def test_tab_loads_history_and_updates_on_bridge_signal(qtbot: QtBot, tmp_path: Path) -> None:
@@ -143,7 +219,9 @@ def test_tab_loads_history_and_updates_on_bridge_signal(qtbot: QtBot, tmp_path: 
     tab = ChangesTab(bridge, store)
     qtbot.addWidget(tab)
 
-    assert tab._table.model().rowCount() == 1
+    table = tab.findChild(QTableView)
+    assert table is not None
+    assert table.model().rowCount() == 1
 
     # Emit bridge signal from engine simulation
     live_event = ChangeEvent(
@@ -156,8 +234,8 @@ def test_tab_loads_history_and_updates_on_bridge_signal(qtbot: QtBot, tmp_path: 
         ChangeDetected(watcher_name="news", event=live_event, timestamp=live_event.timestamp)
     )
 
-    assert tab._table.model().rowCount() == 2
-    assert tab._table.model().data(tab._table.model().index(0, 1)) == "news"
+    assert table.model().rowCount() == 2
+    assert table.model().data(table.model().index(0, 1)) == "news"
 
 
 def test_tab_without_history(qtbot: QtBot) -> None:
@@ -166,7 +244,9 @@ def test_tab_without_history(qtbot: QtBot) -> None:
     tab = ChangesTab(bridge, history=None)
     qtbot.addWidget(tab)
 
-    assert tab._table.model().rowCount() == 0
+    table = tab.findChild(QTableView)
+    assert table is not None
+    assert table.model().rowCount() == 0
 
     now = datetime(2026, 11, 15, 12, 0, tzinfo=UTC)
     live_event = ChangeEvent(
@@ -179,10 +259,10 @@ def test_tab_without_history(qtbot: QtBot) -> None:
         ChangeDetected(watcher_name="flats", event=live_event, timestamp=now)
     )
 
-    assert tab._table.model().rowCount() == 1
+    assert table.model().rowCount() == 1
 
 
-def test_search_box_filters_rows(qtbot: QtBot, tmp_path: Path) -> None:
+def test_search_box_filters_rows_case_insensitively(qtbot: QtBot, tmp_path: Path) -> None:
     """Test that the search box filters rows across columns using the proxy model."""
     store = HistoryStore(tmp_path / "history.db")
     now = datetime(2026, 11, 15, 12, 0, tzinfo=UTC)
@@ -211,52 +291,48 @@ def test_search_box_filters_rows(qtbot: QtBot, tmp_path: Path) -> None:
     tab = ChangesTab(EngineBridge(), store)
     qtbot.addWidget(tab)
 
-    assert tab._proxy.rowCount() == 2
+    table = tab.findChild(QTableView)
+    search_box = tab.findChild(QLineEdit)
+    assert table is not None and search_box is not None
+    proxy = table.model()
+
+    assert proxy.rowCount() == 2
 
     # Filter by watcher name (case-insensitive)
-    tab._search_box.setText("crypto")
-    assert tab._proxy.rowCount() == 1
-    assert tab._proxy.data(tab._proxy.index(0, 1)) == "crypto"
+    search_box.setText("crypto")
+    assert proxy.rowCount() == 1
+    assert proxy.data(proxy.index(0, 1)) == "crypto"
 
-    tab._search_box.setText("CRYPTO")
-    assert tab._proxy.rowCount() == 1
-    assert tab._proxy.data(tab._proxy.index(0, 1)) == "crypto"
+    search_box.setText("CRYPTO")
+    assert proxy.rowCount() == 1
+    assert proxy.data(proxy.index(0, 1)) == "crypto"
 
     # Filter by title (case-insensitive)
-    tab._search_box.setText("center")
-    assert tab._proxy.rowCount() == 1
-    assert tab._proxy.data(tab._proxy.index(0, 1)) == "flats"
+    search_box.setText("center")
+    assert proxy.rowCount() == 1
+    assert proxy.data(proxy.index(0, 1)) == "flats"
 
-    tab._search_box.setText("CENTER")
-    assert tab._proxy.rowCount() == 1
-    assert tab._proxy.data(tab._proxy.index(0, 1)) == "flats"
+    search_box.setText("CENTER")
+    assert proxy.rowCount() == 1
+    assert proxy.data(proxy.index(0, 1)) == "flats"
 
     # Filter with no match
-    tab._search_box.setText("nonexistent")
-    assert tab._proxy.rowCount() == 0
+    search_box.setText("nonexistent")
+    assert proxy.rowCount() == 0
 
     # Clear filter
-    tab._search_box.setText("")
-    assert tab._proxy.rowCount() == 2
+    search_box.setText("")
+    assert proxy.rowCount() == 2
 
 
-def test_selecting_row_displays_details_and_diff(qtbot: QtBot, tmp_path: Path) -> None:
-    """Test that selecting a row shows formatted details and unified diff in the details box."""
+def test_selecting_row_displays_item_details(qtbot: QtBot, tmp_path: Path) -> None:
+    """Test that selecting an item change displays formatted metadata and price transition."""
     store = HistoryStore(tmp_path / "history.db")
     now = datetime(2026, 11, 15, 12, 0, tzinfo=UTC)
-    diff = "--- old\n+++ new\n@@ -1 +1 @@\n-red\n+blue\n"
-    store.record_changes(
-        ChangeEvent(
-            watcher_name="site",
-            timestamp=now,
-            changes=(Change(kind=ChangeKind.TEXT, diff_text=diff),),
-            summary="text diff",
-        )
-    )
     store.record_changes(
         ChangeEvent(
             watcher_name="shop",
-            timestamp=now + timedelta(minutes=1),
+            timestamp=now,
             changes=(
                 Change(
                     kind=ChangeKind.CHANGED,
@@ -271,43 +347,68 @@ def test_selecting_row_displays_details_and_diff(qtbot: QtBot, tmp_path: Path) -
     tab = ChangesTab(EngineBridge(), store)
     qtbot.addWidget(tab)
 
-    # Row 0 is the newest (shop)
-    tab._table.selectRow(0)
-    details_shop = tab._details.toPlainText()
-    assert "Watcher: shop" in details_shop
-    assert "Title: Shoes" in details_shop
-    assert "Price: 100.0 -> 80.0" in details_shop
+    table = tab.findChild(QTableView)
+    details = tab.findChild(QPlainTextEdit)
+    assert table is not None and details is not None
 
-    # Row 1 is the oldest (site with diff)
-    tab._table.selectRow(1)
-    details_diff = tab._details.toPlainText()
-    assert "Watcher: site" in details_diff
-    assert "Kind: text" in details_diff
-    assert "--- Diff ---" in details_diff
-    assert "+blue" in details_diff
+    table.selectRow(0)
+    text = details.toPlainText()
+    assert "Watcher: shop" in text
+    assert "Title: Shoes" in text
+    assert "Price: 100 zł → 80 zł" in text
 
-    # Clear selection clears details
-    tab._table.clearSelection()
-    assert tab._details.toPlainText() == ""
 
-    # Test item with price but without old_price
-    new_item = ChangeEvent(
-        watcher_name="market",
-        timestamp=now + timedelta(minutes=2),
-        changes=(Change(kind=ChangeKind.NEW, item=Item(key="m1", title="Stock", price=50.0)),),
-        summary="new stock",
+def test_selecting_row_displays_diff_details(qtbot: QtBot, tmp_path: Path) -> None:
+    """Test that selecting a text change displays the formatted unified diff."""
+    store = HistoryStore(tmp_path / "history.db")
+    now = datetime(2026, 11, 15, 12, 0, tzinfo=UTC)
+    diff = "--- old\n+++ new\n@@ -1 +1 @@\n-red\n+blue\n"
+    store.record_changes(
+        ChangeEvent(
+            watcher_name="site",
+            timestamp=now,
+            changes=(Change(kind=ChangeKind.TEXT, diff_text=diff),),
+            summary="text diff",
+        )
     )
-    tab._model.add_event(ChangeDetected(watcher_name="market", event=new_item, timestamp=now))
-    tab._table.selectRow(0)
-    assert "Price: 50.0" in tab._details.toPlainText()
 
-    # Test item with old_price but without new price (removed item)
-    removed_item = ChangeEvent(
-        watcher_name="shop",
-        timestamp=now + timedelta(minutes=3),
-        changes=(Change(kind=ChangeKind.REMOVED, before=Item(key="hat", title="Hat", price=40.0)),),
-        summary="hat removed",
+    tab = ChangesTab(EngineBridge(), store)
+    qtbot.addWidget(tab)
+
+    table = tab.findChild(QTableView)
+    details = tab.findChild(QPlainTextEdit)
+    assert table is not None and details is not None
+
+    table.selectRow(0)
+    text = details.toPlainText()
+    assert "Watcher: site" in text
+    assert "Kind: text" in text
+    assert "--- Diff ---" in text
+    assert "+blue" in text
+
+
+def test_clearing_selection_clears_details(qtbot: QtBot, tmp_path: Path) -> None:
+    """Test that deselecting rows clears the details panel."""
+    store = HistoryStore(tmp_path / "history.db")
+    now = datetime(2026, 11, 15, 12, 0, tzinfo=UTC)
+    store.record_changes(
+        ChangeEvent(
+            watcher_name="site",
+            timestamp=now,
+            changes=(Change(kind=ChangeKind.TEXT, diff_text="diff"),),
+            summary="diff",
+        )
     )
-    tab._model.add_event(ChangeDetected(watcher_name="shop", event=removed_item, timestamp=now))
-    tab._table.selectRow(0)
-    assert "Price: (was 40.0)" in tab._details.toPlainText()
+
+    tab = ChangesTab(EngineBridge(), store)
+    qtbot.addWidget(tab)
+
+    table = tab.findChild(QTableView)
+    details = tab.findChild(QPlainTextEdit)
+    assert table is not None and details is not None
+
+    table.selectRow(0)
+    assert details.toPlainText() != ""
+
+    table.clearSelection()
+    assert details.toPlainText() == ""
