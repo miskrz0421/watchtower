@@ -24,7 +24,8 @@ _CREATE_CHANGES_TABLE = dedent("""
         key TEXT,
         title TEXT,
         price REAL,
-        old_price REAL
+        old_price REAL,
+        diff_text TEXT
     )
     """)
 
@@ -40,8 +41,8 @@ _CREATE_CHECKS_TABLE = dedent("""
     """)
 
 _INSERT_CHANGE = dedent("""
-    INSERT INTO changes (watcher_name, timestamp, kind, key, title, price, old_price)
-    VALUES (:watcher_name, :timestamp, :kind, :key, :title, :price, :old_price)
+    INSERT INTO changes (watcher_name, timestamp, kind, key, title, price, old_price, diff_text)
+    VALUES (:watcher_name, :timestamp, :kind, :key, :title, :price, :old_price, :diff_text)
     """)
 
 _INSERT_CHECK = dedent("""
@@ -50,13 +51,13 @@ _INSERT_CHECK = dedent("""
     """)
 
 _SELECT_CHANGES = dedent("""
-    SELECT watcher_name, timestamp, kind, key, title, price, old_price
+    SELECT watcher_name, timestamp, kind, key, title, price, old_price, diff_text
     FROM changes
     ORDER BY id ASC
     """)
 
 _SELECT_CHANGES_FOR_WATCHER = dedent("""
-    SELECT watcher_name, timestamp, kind, key, title, price, old_price
+    SELECT watcher_name, timestamp, kind, key, title, price, old_price, diff_text
     FROM changes
     WHERE watcher_name = ?
     ORDER BY id ASC
@@ -87,6 +88,7 @@ class ChangeRecord:
     title: str | None
     price: float | None
     old_price: float | None
+    diff_text: str | None = None
 
 
 @dataclass(frozen=True)
@@ -110,6 +112,7 @@ class _ChangeRow(TypedDict):
     title: str | None
     price: float | None
     old_price: float | None
+    diff_text: str | None
 
 
 class _CheckRow(TypedDict):
@@ -137,6 +140,7 @@ def _change_to_row(
         "title": item.title if item is not None else None,
         "price": change.item.price if change.item is not None else None,
         "old_price": change.before.price if change.before is not None else None,
+        "diff_text": change.diff_text,
     }
 
 
@@ -230,6 +234,7 @@ class HistoryStore:
                     title=row[4],
                     price=row[5],
                     old_price=row[6],
+                    diff_text=row[7],
                 )
 
     def checks(self, watcher_name: str | None = None) -> Iterator[CheckRecord]:

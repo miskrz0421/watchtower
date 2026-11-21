@@ -454,3 +454,20 @@ PR that makes the decision.
   paused, green otherwise) and the tooltip counts the states. Pause all / Resume all submit one
   command per watcher. When the desktop has a tray, closing the window only hides it and the tray's
   Quit ends the app; without one, closing the window quits as before.
+
+## ADR-025: Diff text storage in history
+- Status: accepted · M5
+- Context: `TextDiffer` generates `Change(kind=ChangeKind.TEXT, diff_text=...)` containing unified diffs.
+  Previously, `HistoryStore` and `ChangeRecord` only tracked structured item fields (`key`, `title`,
+  `price`, `old_price`), discarding `diff_text`. The M5 Changes tab needs historical diffs to show
+  the text details of changes.
+- Decision:
+  - Add a `diff_text TEXT` column to the `changes` table in SQLite.
+  - Add `diff_text: str | None = None` to `ChangeRecord`.
+  - Because Watchtower is pre-1.0 and has not been officially released yet, no backward compatibility
+    layer or schema migration logic is maintained for existing test databases; existing databases can
+    simply be recreated.
+- Alternatives: storing diff text in separate files beside the database (scatters data across the filesystem);
+  full database migrations using Alembic or schema version tables (unnecessary complexity before 1.0 release).
+- Consequences: text watcher changes preserve unified diffs in the history; `ChangeRecord` carries
+  `diff_text` for the GUI Changes tab and reporting.

@@ -86,6 +86,35 @@ def test_record_changes_without_item(store: HistoryStore) -> None:
     assert records[0].title is None
     assert records[0].price is None
     assert records[0].old_price is None
+    assert records[0].diff_text == "line changed"
+
+
+def test_record_changes_with_multiline_diff_text(store: HistoryStore) -> None:
+    """Test recording and reading back a change with a multi-line unified diff."""
+    now = datetime(2026, 11, 15, 12, 0, tzinfo=UTC)
+    diff = "--- old\n+++ new\n@@ -1 +1 @@\n-hello\n+world\n"
+    change = Change(kind=ChangeKind.TEXT, diff_text=diff)
+    event = ChangeEvent(
+        watcher_name="docs",
+        timestamp=now,
+        changes=(change,),
+        summary="diff detected",
+    )
+
+    store.record_changes(event)
+    records = list(store.changes())
+
+    assert len(records) == 1
+    assert records[0] == ChangeRecord(
+        watcher_name="docs",
+        timestamp=now,
+        kind=ChangeKind.TEXT,
+        key=None,
+        title=None,
+        price=None,
+        old_price=None,
+        diff_text=diff,
+    )
 
 
 def test_record_changes_with_empty_event_does_nothing(store: HistoryStore) -> None:
