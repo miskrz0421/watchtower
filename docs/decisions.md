@@ -49,10 +49,10 @@ PR that makes the decision.
   mypy and the tests of `reports/` need them. `watchtower.gui` and `watchtower.reports` are
   imported only inside the `gui` and `report` CLI commands, so the other commands still run
   without the extras.
-- Note (M5): desktop-notifier is another extra dependecy in the new `desktop` group.
-  `MissingDependencyError` is a new public error and a new pattern: optional packages are 
-  imported inside `__init__` and a missing one becomes `ConfigError` when building a Watcher
-  from a config.
+- Note (M5, notifiers PR): `desktop-notifier` is another extra, in the new `desktop` group (and
+  in `dev`). It sets a new pattern: a plugin imports its optional package inside `__init__`, a
+  missing one raises the new public `MissingDependencyError`, and the config loader turns that
+  into a `ConfigError` naming the watcher.
 
 ## ADR-004: First run is a baseline
 - Status: accepted · M1
@@ -448,10 +448,7 @@ PR that makes the decision.
 - Consequences: tabs are built and tested without the engine: a test emits the bridge's signals
   or calls a model's methods directly. Reading the history from the GUI thread is safe because
   `HistoryStore` opens a connection per call (ADR-021). `desktop-notifier` is one more dependency;
-  it goes into an optional extra and the `dev` group, not into the core (ADR-003). Notification
-  lifetime belongs to the OS notification server, not to Watchtower. A one-shot `watchtower check`
-  may therefore show a notification only briefly; use `watchtower run` or the tray app to keep the
-  process alive.
+  it goes into an optional extra and the `dev` group, not into the core (ADR-003).
 - Note (M5, engine PR): `run_gui(scheduler, event_bus, history)` gets everything built by the CLI,
   so building watchers from a config stays in one place (`cli.py`) for `run` and `gui`. It builds
   the bridge and the window before `EngineThread` starts, so the tabs read `Scheduler.statuses()`
@@ -467,4 +464,6 @@ PR that makes the decision.
   notifications in quick succession" this way. `DesktopNotifier` does not turn those warnings into
   `NotifyError`; its `NotifyError` branch only covers exceptions that actually propagate out of the
   backend. Checking the returned identifier would not help, because the library returns one either
-  way.
+  way. How long a notification stays on screen is up to the OS notification server: after a
+  one-shot `watchtower check` it may disappear at once, so use `watchtower run` or the tray app.
+  Messages are cut to 2000 characters (Windows rejects toasts over about 30 KB).

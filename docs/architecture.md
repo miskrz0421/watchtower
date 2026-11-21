@@ -38,7 +38,7 @@ src/watchtower/
 ├── storage/         _snapshots (Memento), _history, _recorder
 ├── diffs/           _base (Strategy), _text, _items
 ├── filters/         _base (Specification + Composite: And/Or/Not), _builtin
-├── notifiers/       _base (Adapter), _console, _discord, _desktop, _format (shared change formatting)
+├── notifiers/       _base (Adapter), _console, _discord, _desktop, _format (shared change formatting), _decorators
 ├── config/          _loader (YAML loader), _intervals (interval parsing), _filters (filter builder)
 ├── core/            _watcher, _builder (Builder), _scheduler (Mediator), _clock, _logging_observer,
 │                    _states (State), _commands, _retry
