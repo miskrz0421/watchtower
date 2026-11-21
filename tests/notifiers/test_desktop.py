@@ -102,7 +102,7 @@ def test_send_truncates_long_message() -> None:
 
 
 def test_send_wraps_backend_errors_in_notify_error() -> None:
-    """An exception that escapes the backend becomes NotifyError; library warnings do not."""
+    """An exception that escapes the backend becomes NotifyError."""
     backend = Mock()
     backend.send.side_effect = RuntimeError("no notification daemon")
     notifier = DesktopNotifier(backend=backend)

@@ -77,7 +77,7 @@ def _read_yaml(path: Path) -> _YamlMapping:
 
 
 def _replace_env_var(match: re.Match[str]) -> str:
-    """Replace one ${NAME} placeholder with the value of that environment variable.
+    """Replace one `${NAME}` placeholder with the value of that environment variable.
 
     Args:
         match: Regex match whose first group is the variable name.
@@ -97,10 +97,7 @@ def _replace_env_var(match: re.Match[str]) -> str:
 
 
 def _substitute_env_vars[T](value: T) -> T:
-    """Replace ${NAME} placeholders in parsed YAML values with environment variables.
-
-    Mappings and lists are handled recursively, so secrets work in nested plugin
-    options (such as a Discord `webhook_url`) as well as in top-level values.
+    """Replace `${NAME}` placeholders with environment variables, in nested values too.
 
     Args:
         value: A value parsed from the config file.

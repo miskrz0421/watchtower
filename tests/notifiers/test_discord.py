@@ -51,7 +51,7 @@ def _item_changes() -> tuple[Change, ...]:
 def _recording_transport(
     recorded: dict[str, httpx.Request], response: httpx.Response | None = None
 ) -> httpx.MockTransport:
-    """Record the outgoing request and reply with a successful webhook response."""
+    """Build a transport that records the request and replies with `response` (204 by default)."""
 
     def handler(request: httpx.Request) -> httpx.Response:
         recorded["request"] = request

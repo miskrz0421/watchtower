@@ -25,37 +25,20 @@ class _NotificationBackend(Protocol):
 
 @register_notifier("desktop")
 class DesktopNotifier(Notifier):
-    """Notifier showing each change event as a notification of the operating system.
-
-    Uses the `desktop-notifier` package, not Qt, so it works in `watchtower run`
-    as well as in the tray app (see ADR-024).
-
-    Delivery is best-effort. `desktop-notifier` catches delivery errors itself,
-    logs a warning with a traceback and still returns a notification identifier;
-    for example, KDE can reject a burst of similar notifications with a DBus
-    error. Those failures do not reach `send()`. `NotifyError` only wraps an
-    exception that actually propagates out of the backend, such as a setup
-    error or a failure raised by a test fake.
-
-    The OS notification server owns each notification's lifetime. A one-shot
-    `watchtower check` exits immediately, so the notification may be removed
-    as soon as it appears; use a long-running mode for lasting visibility.
-    """
+    """Notifier showing each change event as a best-effort OS notification (see ADR-024)."""
 
     def __init__(self, *, backend: _NotificationBackend | None = None) -> None:
         """Initialize DesktopNotifier.
 
-        The optional package is imported here, not at module import time, so
-        `import watchtower` works in a headless install (see ADR-003).
-
         Args:
-            backend: Object with send(title, message); tests pass a fake. When
-                None, the real backend is created from the optional extra.
+            backend: Object with `send(title, message)`; tests pass a fake. None
+                means the real `desktop-notifier` backend.
 
         Raises:
-            MissingDependencyError: If no backend was injected and the extra is missing.
+            MissingDependencyError: If no backend is given and the extra is missing.
         """
         if backend is None:
+            # Imported here so `import watchtower` works without the extra (ADR-003).
             try:
                 from desktop_notifier.sync import DesktopNotifierSync
             except ImportError as e:
@@ -68,17 +51,13 @@ class DesktopNotifier(Notifier):
         self._backend = backend
 
     def send(self, event: ChangeEvent) -> None:
-        """Show the event's summary and changes as one desktop notification.
-
-        The message is truncated to max 2000 characters because of notification payload limits.
+        """Show the event's summary and changes, cut to 2000 characters, as one notification.
 
         Args:
             event: Event to show.
 
         Raises:
-            NotifyError: If there is a problem with the backend.
-                `desktop-notifier` does not raise when scheduling fails,
-                it only logs a warning with a traceback.
+            NotifyError: If the backend raises an error.
         """
         title = f"{event.watcher_name}: {event.summary}"
         message = "\n".join(change_text(change) for change in event.changes)

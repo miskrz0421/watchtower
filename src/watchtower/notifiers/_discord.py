@@ -39,9 +39,7 @@ class DiscordNotifier(Notifier):
         self._transport = transport
 
     def send(self, event: ChangeEvent) -> None:
-        """Post the event's summary and changes as one Discord message.
-
-        The message is truncated to max 2000 characters because of Discord webhook limitations.
+        """Post the event's summary and changes, cut to 2000 characters, as one Discord message.
 
         Args:
             event: Event to post.
