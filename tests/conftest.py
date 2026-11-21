@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sys
 import threading
 from collections.abc import Iterator
 from dataclasses import dataclass
@@ -42,3 +43,9 @@ def fake_listings(tmp_path: Path) -> Iterator[FakeListings]:
     yield listings
     httpd.shutdown()
     httpd.server_close()
+
+
+@pytest.fixture
+def no_desktop_notifier(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Simulate an install without the optional desktop-notifier package."""
+    monkeypatch.setitem(sys.modules, "desktop_notifier.sync", None)

@@ -9,9 +9,10 @@ import httpx
 from bs4 import BeautifulSoup, Tag
 
 from watchtower._errors import ParseError
+from watchtower._http import DEFAULT_TIMEOUT_SECONDS
 from watchtower._models import Item
 from watchtower._registry import register_source
-from watchtower.sources._http import DEFAULT_TIMEOUT_SECONDS, HttpSource
+from watchtower.sources._http import HttpSource
 from watchtower.sources._parsing import parse_price
 
 

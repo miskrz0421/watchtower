@@ -80,6 +80,29 @@ def test_plugins_lists_every_kind(capsys: pytest.CaptureFixture[str]) -> None:
     assert "notifier: console" in out
 
 
+def test_check_reports_missing_optional_dependency(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], no_desktop_notifier: None
+) -> None:
+    """A config needing an absent extra fails with a clear error, not a traceback."""
+    watched = tmp_path / "notes.txt"
+    watched.write_text("contents\n", encoding="utf-8")
+    config = _write_config(
+        tmp_path,
+        dedent(f"""
+            watchers:
+              - name: Notes
+                source: {{ type: file, path: "{watched.as_posix()}" }}
+                diff: {{ type: text }}
+                notify: [{{ type: desktop }}]
+        """),
+    )
+
+    assert main(["check", str(config)]) == 1
+    err = capsys.readouterr().err
+    assert "Error: Watcher 'Notes' key 'notify'" in err
+    assert "requires the desktop-notifier package" in err
+
+
 def test_check_reports_file_change_between_runs(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
