@@ -27,6 +27,7 @@ watchtower-fake-listings = "fake_listings.server:main"
 [project.optional-dependencies]
 gui = ["pyside6>=6.7"]
 reports = ["pandas>=2.2", "matplotlib>=3.9"]
+desktop = ["desktop-notifier>=6.2.0"]
 
 [dependency-groups]
 # The extras are here too: pytest-qt, mypy and the tests of gui/ and reports/ need them (ADR-003).
@@ -41,6 +42,7 @@ dev = [
     "pyside6>=6.7",
     "pandas>=2.2",
     "matplotlib>=3.9",
+    "desktop-notifier>=6.2.0",
 ]
 
 [build-system]

@@ -444,7 +444,10 @@ PR that makes the decision.
 - Consequences: tabs are built and tested without the engine: a test emits the bridge's signals
   or calls a model's methods directly. Reading the history from the GUI thread is safe because
   `HistoryStore` opens a connection per call (ADR-021). `desktop-notifier` is one more dependency;
-  it goes into an optional extra and the `dev` group, not into the core (ADR-003).
+  it goes into an optional extra and the `dev` group, not into the core (ADR-003). Notification
+  lifetime belongs to the OS notification server, not to Watchtower. A one-shot `watchtower check`
+  may therefore show a notification only briefly; use `watchtower run` or the tray app to keep the
+  process alive.
 - Note (M5, engine PR): `run_gui(scheduler, event_bus, history)` gets everything built by the CLI,
   so building watchers from a config stays in one place (`cli.py`) for `run` and `gui`. It builds
   the bridge and the window before `EngineThread` starts, so the tabs read `Scheduler.statuses()`

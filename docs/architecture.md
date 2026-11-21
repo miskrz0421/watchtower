@@ -29,7 +29,7 @@ Qt**: the GUI is just another subscriber on the event bus.
 src/watchtower/
 ├── __init__.py      public API: Watcher, models, events, plugin base classes, registry
 ├── _models.py       Item, Snapshot, Change, ChangeKind, ChangeEvent (private)
-├── _errors.py       WatchtowerError → SourceError, ParseError, NotifyError, StorageError, ConfigError (private)
+├── _errors.py       WatchtowerError → SourceError, ParseError, NotifyError, StorageError, ConfigError, MissingDependencyError
 ├── _registry.py     @register_* decorators, create(kind, name, **params) (private)
 ├── _events.py       event dataclasses + EventBus (private)
 ├── cli.py           argparse CLI entry point: check / run / plugins / gui / report
