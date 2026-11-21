@@ -10,11 +10,5 @@
     "title": "Studio Kazimierz",
     "price": 2400,
     "description": "Small studio on the third floor, no lift."
-  },
-  {
-    "id": "3",
-    "title": "Studio Krowodrza",
-    "price": 2400,
-    "description": "Small studio on the first floor, no lift."
   }
 ]
