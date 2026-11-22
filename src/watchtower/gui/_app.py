@@ -35,8 +35,10 @@ def run_gui(scheduler: Scheduler, event_bus: EventBus, history: HistoryStore | N
     app = _application()
     bridge = EngineBridge()
     bridge.attach(event_bus)
-    window = MainWindow(bridge, scheduler, history)
-    tray = TrayIcon(bridge, scheduler, window)
+    # One read, before the engine moves the states in its own thread (ADR-023).
+    statuses = scheduler.statuses()
+    window = MainWindow(bridge, scheduler, history, statuses)
+    tray = TrayIcon(bridge, scheduler, window, statuses)
     engine = EngineThread(scheduler)
     # With a tray, closing the window only hides it; Quit in the tray menu ends the app.
     app.setQuitOnLastWindowClosed(not QSystemTrayIcon.isSystemTrayAvailable())

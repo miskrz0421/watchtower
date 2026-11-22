@@ -27,23 +27,13 @@ from PySide6.QtWidgets import (
 
 from watchtower._events import ChangeDetected
 from watchtower.gui._bridge import EngineBridge
+from watchtower.gui._format import format_time
 from watchtower.notifiers import format_price
 from watchtower.storage import ChangeRecord, HistoryStore
 
 _COLUMNS: tuple[str, ...] = ("Time", "Watcher", "Kind", "Item", "Price")
 _ROOT_INDEX = QModelIndex()
-
-
-def _format_time(record: ChangeRecord) -> str:
-    """Return the change timestamp formatted in the local timezone.
-
-    Args:
-        record: ChangeRecord containing the UTC timestamp.
-
-    Returns:
-        Formatted date and time string in local timezone.
-    """
-    return record.timestamp.astimezone().strftime("%Y-%m-%d %H:%M:%S")
+_DISPLAY_ROLE = int(Qt.ItemDataRole.DisplayRole)
 
 
 def _format_item(record: ChangeRecord) -> str:
@@ -96,7 +86,7 @@ def _format_row(record: ChangeRecord) -> _ChangeRow:
         Rendered change row for display.
     """
     return _ChangeRow(
-        time=_format_time(record),
+        time=format_time(record.timestamp),
         watcher=record.watcher_name,
         kind=record.kind.value,
         item=_format_item(record),
@@ -115,7 +105,7 @@ def _format_details(record: ChangeRecord) -> str:
     """
     lines = [
         f"Watcher: {record.watcher_name}",
-        f"Timestamp: {_format_time(record)}",
+        f"Timestamp: {format_time(record.timestamp)}",
         f"Kind: {record.kind.value}",
     ]
     if record.key:
@@ -170,7 +160,7 @@ class ChangesTableModel(QAbstractTableModel):
         self,
         section: int,
         orientation: Qt.Orientation,
-        role: int = int(Qt.ItemDataRole.DisplayRole),
+        role: int = _DISPLAY_ROLE,
     ) -> str | None:
         """Return header data for rows and columns.
 
@@ -184,7 +174,7 @@ class ChangesTableModel(QAbstractTableModel):
         """
         if (
             orientation == Qt.Orientation.Horizontal
-            and role == int(Qt.ItemDataRole.DisplayRole)
+            and role == _DISPLAY_ROLE
             and 0 <= section < len(_COLUMNS)
         ):
             return _COLUMNS[section]
@@ -193,7 +183,7 @@ class ChangesTableModel(QAbstractTableModel):
     def data(
         self,
         index: QModelIndex | QPersistentModelIndex,
-        role: int = int(Qt.ItemDataRole.DisplayRole),
+        role: int = _DISPLAY_ROLE,
     ) -> str | None:
         """Return display data for a given model index.
 
@@ -204,9 +194,10 @@ class ChangesTableModel(QAbstractTableModel):
         Returns:
             Cell data for DisplayRole, or None.
         """
-        if not index.isValid() or role != int(Qt.ItemDataRole.DisplayRole):
+        if not index.isValid() or role != _DISPLAY_ROLE or not 0 <= index.column() < len(_COLUMNS):
             return None
-        return _format_row(self._rows[index.row()])[index.column()]
+        record = self.record_at(index.row())
+        return None if record is None else _format_row(record)[index.column()]
 
     def record_at(self, row: int) -> ChangeRecord | None:
         """Return the change record at the given source model row index.
@@ -298,7 +289,8 @@ class ChangesTab(QWidget):
         splitter.addWidget(self._details)
 
         selection_model = self._table.selectionModel()
-        selection_model.selectionChanged.connect(self._on_selection_changed)
+        if selection_model is not None:
+            selection_model.selectionChanged.connect(self._on_selection_changed)
 
     def _on_search_changed(self, text: str) -> None:
         """Filter table rows matching the search text.

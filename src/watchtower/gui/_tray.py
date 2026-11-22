@@ -11,7 +11,9 @@ from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon, QWidget
 from watchtower._events import WatcherState, WatcherStateChanged
 from watchtower.core._commands import Pause, Resume
 from watchtower.core._scheduler import Scheduler
+from watchtower.core._states import WatcherStatus
 from watchtower.gui._bridge import EngineBridge
+from watchtower.gui._statuses import initial_statuses
 
 _GREEN = QColor("#2e9e44")
 _ORANGE = QColor("#e8a317")
@@ -28,20 +30,25 @@ class TrayIcon(QSystemTrayIcon):
         bridge: EngineBridge,
         scheduler: Scheduler,
         window: QWidget,
+        statuses: list[WatcherStatus] | None = None,
         parent: QObject | None = None,
     ) -> None:
         """Initialize TrayIcon.
 
         Args:
             bridge: Signals of the running engine.
-            scheduler: Scheduler to read the states from and send commands to.
+            scheduler: Scheduler to send commands to.
             window: Main window that Open shows.
+            statuses: Statuses read before the engine started; None when the
+                icon is built on its own, outside `run_gui`.
             parent: Qt parent object.
         """
         super().__init__(parent)
         self._scheduler = scheduler
         self._window = window
-        self._states = {status.name: status.state for status in scheduler.statuses()}
+        self._states = {
+            status.name: status.state for status in initial_statuses(scheduler, statuses)
+        }
         self._menu = self._build_menu()
         self.setContextMenu(self._menu)
         self.activated.connect(self._on_activated)

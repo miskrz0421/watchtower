@@ -10,7 +10,7 @@ from PySide6.QtWidgets import QApplication
 from pytestqt.qtbot import QtBot
 
 from watchtower import CheckCompleted, EventBus
-from watchtower.core import Scheduler
+from watchtower.core import Scheduler, WatcherStatus
 from watchtower.gui import MainWindow, run_gui
 
 pytestmark = pytest.mark.gui
@@ -44,6 +44,34 @@ def test_app_checks_in_the_background_until_the_window_is_closed(
 
     assert run_gui(hourly_scheduler, bus, history=None) == 0
     assert len(checks) == 1
+
+
+def test_statuses_are_read_once_before_the_engine_starts(
+    qtbot: QtBot,
+    bus: EventBus,
+    hourly_scheduler: Scheduler,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test that the window and the tray share one status read, not one each."""
+    reads: list[list[WatcherStatus]] = []
+    original = hourly_scheduler.statuses
+
+    def count_read() -> list[WatcherStatus]:
+        statuses = original()
+        reads.append(statuses)
+        return statuses
+
+    monkeypatch.setattr(hourly_scheduler, "statuses", count_read)
+
+    def close_the_window() -> None:
+        """Close the window once the GUI is up, without waiting for a check."""
+        _open_main_window().close()
+
+    QTimer.singleShot(0, close_the_window)
+    QTimer.singleShot(10_000, QApplication.quit)  # never hang the test run
+
+    assert run_gui(hourly_scheduler, bus, history=None) == 0
+    assert len(reads) == 1
 
 
 def test_ctrl_c_quits_the_app(qtbot: QtBot, bus: EventBus, hourly_scheduler: Scheduler) -> None:
