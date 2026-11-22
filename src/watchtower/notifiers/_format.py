@@ -49,15 +49,15 @@ def _item_line(kind: ChangeKind, item: Item, before: Item | None) -> str:
     """
     line = f"{kind.value.capitalize()}: {item.title}"
     if before is not None and before.price != item.price:
-        line += f", {_price(before.price)} → {_price(item.price)}"
+        line += f", {format_price(before.price)} → {format_price(item.price)}"
     elif item.price is not None:
-        line += f", {_price(item.price)}"
+        line += f", {format_price(item.price)}"
     if before is not None and before.title != item.title:
         line += f" (was: {before.title})"
     return line
 
 
-def _price(price: float | None) -> str:
+def format_price(price: float | None) -> str:
     """Format a price the Polish way, e.g. '2 800 zł' or '2 400,50 zł'.
 
     Args:

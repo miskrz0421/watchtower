@@ -165,9 +165,9 @@ def test_format_price_handles_all_price_variants() -> None:
     assert _format_price(changed) == "300 zł → 250 zł"
 
     decimal_changed = ChangeRecord(
-        "w", now, ChangeKind.CHANGED, "k", "t", price=250.5, old_price=299.99
+        "w", now, ChangeKind.CHANGED, "k", "t", price=2400.5, old_price=2800.0
     )
-    assert _format_price(decimal_changed) == "299,99 zł → 250,50 zł"
+    assert _format_price(decimal_changed) == "2 800 zł → 2 400,50 zł"
 
     new_item = ChangeRecord("w", now, ChangeKind.NEW, "k", "t", price=50.0, old_price=None)
     assert _format_price(new_item) == "50 zł"

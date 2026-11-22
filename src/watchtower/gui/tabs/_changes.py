@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
 
 from watchtower._events import ChangeDetected
 from watchtower.gui._bridge import EngineBridge
+from watchtower.notifiers import format_price
 from watchtower.storage import ChangeRecord, HistoryStore
 
 _COLUMNS: tuple[str, ...] = ("Time", "Watcher", "Kind", "Item", "Price")
@@ -57,20 +58,6 @@ def _format_item(record: ChangeRecord) -> str:
     return record.title or record.key or ("(text diff)" if record.diff_text else "")
 
 
-def _format_price_val(price: float) -> str:
-    """Format a numeric price value cleanly without trailing .0.
-
-    Args:
-        price: Price amount to format.
-
-    Returns:
-        Formatted price string in zł.
-    """
-    if price.is_integer():
-        return f"{int(price)} zł"
-    return f"{price:,.2f}".replace(".", ",") + " zł"
-
-
 def _format_price(record: ChangeRecord) -> str:
     """Return a display string for the price or price change.
 
@@ -81,11 +68,11 @@ def _format_price(record: ChangeRecord) -> str:
         Formatted price transition, current price, or an empty string.
     """
     if record.price is not None and record.old_price is not None:
-        return f"{_format_price_val(record.old_price)} → {_format_price_val(record.price)}"
+        return f"{format_price(record.old_price)} → {format_price(record.price)}"
     if record.price is not None:
-        return _format_price_val(record.price)
+        return format_price(record.price)
     if record.old_price is not None:
-        return f"(was {_format_price_val(record.old_price)})"
+        return f"(was {format_price(record.old_price)})"
     return ""
 
 
