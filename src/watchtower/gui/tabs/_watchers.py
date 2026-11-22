@@ -178,18 +178,16 @@ class WatchersTableModel(QAbstractTableModel):
             return STATE_COLOURS[status.state]
         return None
 
-    def status_at(self, row: int) -> WatcherStatus | None:
+    def status_at(self, row: int) -> WatcherStatus:
         """Return the status shown at a row.
 
         Args:
             row: Zero-based row index.
 
         Returns:
-            The watcher's status, or None when the row is out of bounds.
+            The watcher's status.
         """
-        if 0 <= row < len(self._rows):
-            return self._rows[row]
-        return None
+        return self._rows[row]
 
     def set_statuses(self, statuses: list[WatcherStatus]) -> None:
         """Replace all rows, e.g. with the statuses read when the window opens.
@@ -303,7 +301,4 @@ class WatchersTab(QWidget):
             The watcher's name, or None when no row is selected.
         """
         rows = self._table.selectionModel().selectedRows()
-        if not rows:
-            return None
-        status = self._model.status_at(rows[0].row())
-        return None if status is None else status.name
+        return self._model.status_at(rows[0].row()).name if rows else None

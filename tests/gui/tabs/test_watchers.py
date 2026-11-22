@@ -56,7 +56,6 @@ def test_model_empty_on_creation() -> None:
     assert model.headerData(3, Qt.Orientation.Horizontal) == "Last checked"
     assert model.headerData(4, Qt.Orientation.Horizontal) is None
     assert model.data(model.index(0, 0)) is None
-    assert model.status_at(0) is None
 
 
 def test_model_displays_statuses() -> None:
@@ -227,10 +226,8 @@ def test_tab_updates_from_bridge_signals(qtbot: QtBot, monkeypatch: pytest.Monke
     assert model.data(model.index(1, 3)) == now.astimezone().strftime("%Y-%m-%d %H:%M:%S")
 
 
-def test_tab_reads_statuses_when_built_on_its_own(
-    qtbot: QtBot, hourly_scheduler: Scheduler
-) -> None:
-    """Test that a standalone tab still gets its rows when no statuses are passed in."""
+def test_tab_reads_statuses_from_the_scheduler(qtbot: QtBot, hourly_scheduler: Scheduler) -> None:
+    """Test that the tab gets its rows from `Scheduler.statuses()`."""
     tab = WatchersTab(EngineBridge(), hourly_scheduler)
     qtbot.addWidget(tab)
     table = tab.findChild(QTableView)
