@@ -6,9 +6,10 @@ import sys
 from datetime import tzinfo
 from typing import TextIO
 
-from watchtower._models import Change, ChangeEvent, ChangeKind, Item
+from watchtower._models import ChangeEvent
 from watchtower._registry import register_notifier
 from watchtower.notifiers._base import Notifier
+from watchtower.notifiers._format import change_text
 
 
 @register_notifier("console")
@@ -36,61 +37,5 @@ class ConsoleNotifier(Notifier):
         self._stream.write(f"\n[{time_str}] [{event.watcher_name}] {event.summary}\n")
 
         for change in event.changes:
-            self._stream.write(f"{_change_text(change)}\n")
+            self._stream.write(f"{change_text(change)}\n")
         self._stream.flush()
-
-
-def _change_text(change: Change) -> str:
-    """Describe one change: a text diff, an item line, or just the kind of change.
-
-    Args:
-        change: Change to describe.
-
-    Returns:
-        The text to print, without a trailing newline.
-    """
-    if change.kind == ChangeKind.TEXT and change.diff_text:
-        text = f"--- Diff ---\n{change.diff_text.removesuffix('\n')}"
-    elif change.item is not None:
-        text = _item_line(change.kind, change.item, change.before)
-    else:
-        text = change.kind.value.capitalize()
-    return text
-
-
-def _item_line(kind: ChangeKind, item: Item, before: Item | None) -> str:
-    """Describe an item change in one line, e.g. 'Changed: Flat, 2 800 zł → 2 600 zł'.
-
-    Args:
-        kind: Kind of the change.
-        item: Item after the change.
-        before: Item before the change, for a changed item.
-
-    Returns:
-        The line to print.
-    """
-    line = f"{kind.value.capitalize()}: {item.title}"
-    if before is not None and before.price != item.price:
-        line += f", {_price(before.price)} → {_price(item.price)}"
-    elif item.price is not None:
-        line += f", {_price(item.price)}"
-    if before is not None and before.title != item.title:
-        line += f" (was: {before.title})"
-    return line
-
-
-def _price(price: float | None) -> str:
-    """Format a price the Polish way, e.g. '2 800 zł' or '2 400,50 zł'.
-
-    Args:
-        price: Price to format, or None.
-
-    Returns:
-        The formatted price, or 'no price' for None.
-    """
-    if price is None:
-        return "no price"
-    if price.is_integer():
-        return f"{int(price):,} zł".replace(",", " ")
-    grouped = f"{price:,.2f}"  # '2,400.50'
-    return grouped.replace(",", " ").replace(".", ",") + " zł"

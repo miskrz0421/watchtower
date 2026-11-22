@@ -23,5 +23,9 @@ class ConfigError(WatchtowerError):
     """Raised when a config file or a watcher description is invalid."""
 
 
+class MissingDependencyError(WatchtowerError):
+    """Raised when a plugin needs an optional package that is not installed."""
+
+
 class StorageError(WatchtowerError):
     """Raised when saved state cannot be read from or written to storage."""

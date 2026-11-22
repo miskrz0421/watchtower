@@ -41,8 +41,9 @@ just gui                   # the tray app on examples/config.yaml
 just watchtower plugins    # the app; arguments are passed on
 ```
 
-The dev tools already include the `gui` and `reports` extras; `uv sync --no-dev --all-extras`
-installs only the app with both.
+The dev tools already include the `gui`, `reports` and `desktop` extras;
+`uv sync --no-dev --all-extras` installs only the app with all of them, and `--extra NAME`
+picks single ones, e.g. `uv sync --no-dev --extra desktop`.
 
 The app's own commands are entry points declared under `[project.scripts]` in `pyproject.toml`
 (added milestone by milestone):
@@ -91,6 +92,11 @@ watchers:
       - { type: console }
       - { type: discord, webhook_url: "${DISCORD_WEBHOOK_URL}" }
 ```
+
+Set `DISCORD_WEBHOOK_URL` in the environment before loading this config: the loader replaces
+`${NAME}` placeholders with environment values and raises `ConfigError` if one is missing, so
+secrets stay out of the file. Every `${NAME}` in the file is replaced (there is no way to escape
+one); inside `{ ... }` it must be quoted, as above, or YAML cannot parse it.
 
 ## Project structure
 

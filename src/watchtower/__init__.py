@@ -11,6 +11,7 @@ built-in plugin.
 
 from watchtower._errors import (
     ConfigError,
+    MissingDependencyError,
     NotifyError,
     ParseError,
     SourceError,
@@ -60,6 +61,7 @@ __all__ = [
     "FetchFailed",
     "Filter",
     "Item",
+    "MissingDependencyError",
     "Notifier",
     "NotifyError",
     "ParseError",

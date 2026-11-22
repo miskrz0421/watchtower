@@ -8,7 +8,7 @@ from textwrap import dedent
 
 import pytest
 
-from watchtower import Change, ChangeKind, ConfigError, Item
+from watchtower import Change, ChangeKind, ConfigError, Item, MissingDependencyError
 from watchtower.config import Config, load_config
 from watchtower.core import WatcherBuilder
 from watchtower.diffs import ItemDiff, TextDiff
@@ -19,7 +19,7 @@ from watchtower.filters import (
     PriceBelow,
     TextContains,
 )
-from watchtower.notifiers import ConsoleNotifier
+from watchtower.notifiers import ConsoleNotifier, DiscordNotifier
 from watchtower.sources import FakeSource, RSSSource, WebPageSource
 
 
@@ -78,6 +78,89 @@ def test_load_example_config() -> None:
     assert isinstance(w2.filters[0], Or)
     assert len(w2.notifiers) == 1
     assert isinstance(w2.notifiers[0], ConsoleNotifier)
+
+
+def test_yaml_substitutes_webhook_secret_from_environment(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A Discord webhook placeholder in YAML is filled from the environment."""
+    webhook_url = "https://discord.com/api/webhooks/1234/top-secret-token"
+    monkeypatch.setenv("DISCORD_WEBHOOK_URL", webhook_url)
+    config_file = _write_config(
+        tmp_path,
+        dedent("""
+            watchers:
+              - name: Flat alerts
+                source: { type: fake }
+                diff: { type: text }
+                notify:
+                  - { type: discord, webhook_url: "${DISCORD_WEBHOOK_URL}" }
+            """),
+    )
+
+    watcher = load_config(config_file).watchers[0].build()
+    notifier = watcher.notifiers[0]
+
+    assert isinstance(notifier, DiscordNotifier)
+    assert notifier._webhook_url == webhook_url
+
+
+def test_env_substitution_is_recursive_and_keeps_other_values(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Placeholders work in nested values and inside larger strings; other values stay put."""
+    monkeypatch.setenv("WATCHTOWER_DB", "state")
+    monkeypatch.setenv("LISTINGS_HOST", "127.0.0.1")
+    monkeypatch.setenv("AGENCY", "agency")
+    config_file = _write_config(
+        tmp_path,
+        dedent("""
+            database: "${WATCHTOWER_DB}.db"
+            watchers:
+              - name: W
+                source:
+                  type: webpage
+                  url: "http://${LISTINGS_HOST}:8000/${LISTINGS_HOST}/feed"
+                  selector: ".offer"
+                diff: { type: text }
+                filters:
+                  - text_contains: "${AGENCY}"
+                  - price_below: 2500
+            """),
+    )
+
+    config = load_config(config_file)
+    watcher = config.watchers[0].build()
+
+    assert config.database == tmp_path / "state.db"
+    assert isinstance(watcher.source, WebPageSource)
+    assert watcher.source.url == "http://127.0.0.1:8000/127.0.0.1/feed"
+    assert isinstance(watcher.filters[0], TextContains)
+    assert watcher.filters[0].matches(
+        Change(kind=ChangeKind.NEW, item=Item(key="1", title="Flat agency"))
+    )
+    assert isinstance(watcher.filters[1], PriceBelow)
+
+
+def test_unset_environment_variable_raises_config_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A missing secret fails at load time instead of reaching the notifier."""
+    monkeypatch.delenv("DISCORD_WEBHOOK_URL", raising=False)
+    config_file = _write_config(
+        tmp_path,
+        dedent("""
+            watchers:
+              - name: Flat alerts
+                source: { type: fake }
+                diff: { type: text }
+                notify:
+                  - { type: discord, webhook_url: "${DISCORD_WEBHOOK_URL}" }
+            """),
+    )
+
+    with pytest.raises(ConfigError, match="DISCORD_WEBHOOK_URL.*not set"):
+        load_config(config_file)
 
 
 def test_yaml_watcher_equals_python_builder_watcher(tmp_path: Path) -> None:
@@ -200,6 +283,27 @@ def test_read_yaml_os_error_raises_config_error(
     monkeypatch.setattr(Path, "open", mock_open)
     with pytest.raises(ConfigError, match="Cannot read config file"):
         load_config(file)
+
+
+def test_missing_optional_dependency_is_config_error(
+    tmp_path: Path, no_desktop_notifier: None
+) -> None:
+    """A plugin needing an absent extra fails as ConfigError with watcher context."""
+    config_file = _write_config(
+        tmp_path,
+        dedent("""
+            watchers:
+              - name: Flat alerts
+                source: { type: fake, contents: ["offer"] }
+                diff: { type: text }
+                notify: [{ type: desktop }]
+        """),
+    )
+
+    with pytest.raises(ConfigError, match="Watcher 'Flat alerts' key 'notify'") as caught:
+        load_config(config_file)
+
+    assert isinstance(caught.value.__cause__, MissingDependencyError)
 
 
 @pytest.mark.parametrize(

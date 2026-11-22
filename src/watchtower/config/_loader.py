@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
+import os
+import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import yaml
 
-from watchtower._errors import ConfigError
+from watchtower._errors import ConfigError, MissingDependencyError
 from watchtower._registry import (
     create_differ,
     create_notifier,
@@ -22,6 +24,7 @@ from watchtower.core._builder import WatcherBuilder
 
 _ALLOWED_TOP_LEVEL_KEYS = {"database", "watchers"}
 _ALLOWED_WATCHER_KEYS = {"name", "source", "diff", "interval", "filters", "notify"}
+_ENV_VAR_PATTERN = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
 
 type _YamlMapping = dict[str, Any]
 type _WatcherConfigDict = dict[str, Any]
@@ -71,6 +74,47 @@ def _read_yaml(path: Path) -> _YamlMapping:
         msg = f"Config file {path} must contain a mapping"
         raise ConfigError(msg)
     return data
+
+
+def _replace_env_var(match: re.Match[str]) -> str:
+    """Replace one `${NAME}` placeholder with the value of that environment variable.
+
+    Args:
+        match: Regex match whose first group is the variable name.
+
+    Returns:
+        The environment variable's value.
+
+    Raises:
+        ConfigError: If the environment variable is not set.
+    """
+    name = match.group(1)
+    try:
+        return os.environ[name]
+    except KeyError as err:
+        msg = f"Environment variable {name!r} is not set but is used in the config file"
+        raise ConfigError(msg) from err
+
+
+def _substitute_env_vars[T](value: T) -> T:
+    """Replace `${NAME}` placeholders with environment variables, in nested values too.
+
+    Args:
+        value: A value parsed from the config file.
+
+    Returns:
+        The value with every placeholder replaced. Other value types are unchanged.
+
+    Raises:
+        ConfigError: If a referenced environment variable is not set.
+    """
+    if isinstance(value, dict):
+        return cast(T, {key: _substitute_env_vars(item) for key, item in value.items()})
+    if isinstance(value, list):
+        return cast(T, [_substitute_env_vars(item) for item in value])
+    if isinstance(value, str):
+        return cast(T, _ENV_VAR_PATTERN.sub(_replace_env_var, value))
+    return value
 
 
 def _resolve_database(raw_database: object, config_dir: Path) -> Path | None:
@@ -139,7 +183,7 @@ def _build_component[T](
     params = {k: v for k, v in config.items() if k != "type"}
     try:
         return factory(plugin_type, **params)
-    except (TypeError, ValueError) as err:
+    except (TypeError, ValueError, MissingDependencyError) as err:
         msg = f"Watcher {watcher_name!r} key {key_name!r}: {err}"
         raise ConfigError(msg) from err
 
@@ -245,8 +289,9 @@ def load_config(path: Path) -> Config:
 
     Sources, differs, notifiers and filters are created by name through the
     registry and handed to a WatcherBuilder, the same one the Python API uses
-    (see ADR-018). The file format is described in ADR-017 and shown in
-    `examples/config.yaml`.
+    (see ADR-018). `${NAME}` placeholders in any value are replaced from the
+    environment, so secrets stay out of the file (see ADR-010). The file format
+    is described in ADR-017 and shown in `examples/config.yaml`.
 
     Args:
         path: Path to the YAML file.
@@ -256,9 +301,10 @@ def load_config(path: Path) -> Config:
 
     Raises:
         ConfigError: If the file is missing, is not valid YAML, lacks a
-            required key, names an unknown plugin or repeats a watcher name.
+            required key, names an unknown plugin, repeats a watcher name or
+            refers to an environment variable that is not set.
     """
-    raw_config = _read_yaml(path)
+    raw_config = _substitute_env_vars(_read_yaml(path))
     for key in raw_config:
         if key not in _ALLOWED_TOP_LEVEL_KEYS:
             msg = f"Config file has unknown key {key!r}"

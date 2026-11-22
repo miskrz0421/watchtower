@@ -49,6 +49,10 @@ PR that makes the decision.
   mypy and the tests of `reports/` need them. `watchtower.gui` and `watchtower.reports` are
   imported only inside the `gui` and `report` CLI commands, so the other commands still run
   without the extras.
+- Note (M5, notifiers PR): `desktop-notifier` is another extra, in the new `desktop` group (and
+  in `dev`). It sets a new pattern: a plugin imports its optional package inside `__init__`, a
+  missing one raises the new public `MissingDependencyError`, and the config loader turns that
+  into a `ConfigError` naming the watcher.
 
 ## ADR-004: First run is a baseline
 - Status: accepted · M1
@@ -454,6 +458,15 @@ PR that makes the decision.
   paused, green otherwise) and the tooltip counts the states. Pause all / Resume all submit one
   command per watcher. When the desktop has a tray, closing the window only hides it and the tray's
   Quit ends the app; without one, closing the window quits as before.
+- Note (M5, notifiers): desktop delivery is best-effort. `desktop-notifier` does not raise
+  when scheduling fails: it logs a warning with a traceback ("Notification failed") and `send()`
+  still returns an identifier. KDE, for instance, reports DBus "Created too many similar
+  notifications in quick succession" this way. `DesktopNotifier` does not turn those warnings into
+  `NotifyError`; its `NotifyError` branch only covers exceptions that actually propagate out of the
+  backend. Checking the returned identifier would not help, because the library returns one either
+  way. How long a notification stays on screen is up to the OS notification server: after a
+  one-shot `watchtower check` it may disappear at once, so use `watchtower run` or the tray app.
+  Messages are cut to 2000 characters (Windows rejects toasts over about 30 KB).
 
 ## ADR-025: Diff text storage in history
 - Status: accepted · M5

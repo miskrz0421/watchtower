@@ -29,15 +29,16 @@ Qt**: the GUI is just another subscriber on the event bus.
 src/watchtower/
 ├── __init__.py      public API: Watcher, models, events, plugin base classes, registry
 ├── _models.py       Item, Snapshot, Change, ChangeKind, ChangeEvent (private)
-├── _errors.py       WatchtowerError → SourceError, ParseError, NotifyError, StorageError, ConfigError (private)
+├── _errors.py       WatchtowerError → SourceError, ParseError, NotifyError, StorageError, ConfigError, MissingDependencyError (private)
 ├── _registry.py     @register_* decorators, create(kind, name, **params) (private)
 ├── _events.py       event dataclasses + EventBus (private)
+├── _http.py         shared HTTP settings: timeout, user agent (private)
 ├── cli.py           argparse CLI entry point: check / run / plugins / gui / report
 ├── sources/         _base (Template Method), _fake, _file, _rss, _webpage, _json_api, _http, _parsing
 ├── storage/         _snapshots (Memento), _history, _recorder
 ├── diffs/           _base (Strategy), _text, _items
 ├── filters/         _base (Specification + Composite: And/Or/Not), _builtin
-├── notifiers/       _base (Adapter), _console, _discord, _desktop, _decorators
+├── notifiers/       _base (Adapter), _console, _discord, _desktop, _format (shared change formatting), _decorators
 ├── config/          _loader (YAML loader), _intervals (interval parsing), _filters (filter builder)
 ├── core/            _watcher, _builder (Builder), _scheduler (Mediator), _clock, _logging_observer,
 │                    _states (State), _commands, _retry
