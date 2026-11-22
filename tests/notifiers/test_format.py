@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from watchtower import Change, ChangeKind, Item
-from watchtower.notifiers._format import change_text, truncate
+from watchtower.notifiers._format import change_text, format_price, truncate
 
 
 def test_change_text_covers_diff_item_and_bare_kind() -> None:
@@ -36,3 +36,10 @@ def test_truncate_keeps_short_text() -> None:
 def test_truncate_cuts_long_text_with_ellipsis() -> None:
     """Text over the limit is cut to exactly the limit, ending with an ellipsis."""
     assert truncate("abcdef", 4) == "abc…"
+
+
+def test_format_price_groups_thousands_and_uses_decimal_comma() -> None:
+    """Prices use a space between thousands and a comma before the grosze."""
+    assert format_price(2800.0) == "2 800 zł"
+    assert format_price(2400.5) == "2 400,50 zł"
+    assert format_price(None) == "no price"

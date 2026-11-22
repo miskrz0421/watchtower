@@ -24,7 +24,8 @@ _CREATE_CHANGES_TABLE = dedent("""
         key TEXT,
         title TEXT,
         price REAL,
-        old_price REAL
+        old_price REAL,
+        diff_text TEXT
     )
     """)
 
@@ -40,8 +41,8 @@ _CREATE_CHECKS_TABLE = dedent("""
     """)
 
 _INSERT_CHANGE = dedent("""
-    INSERT INTO changes (watcher_name, timestamp, kind, key, title, price, old_price)
-    VALUES (:watcher_name, :timestamp, :kind, :key, :title, :price, :old_price)
+    INSERT INTO changes (watcher_name, timestamp, kind, key, title, price, old_price, diff_text)
+    VALUES (:watcher_name, :timestamp, :kind, :key, :title, :price, :old_price, :diff_text)
     """)
 
 _INSERT_CHECK = dedent("""
@@ -50,13 +51,13 @@ _INSERT_CHECK = dedent("""
     """)
 
 _SELECT_CHANGES = dedent("""
-    SELECT watcher_name, timestamp, kind, key, title, price, old_price
+    SELECT watcher_name, timestamp, kind, key, title, price, old_price, diff_text
     FROM changes
     ORDER BY id ASC
     """)
 
 _SELECT_CHANGES_FOR_WATCHER = dedent("""
-    SELECT watcher_name, timestamp, kind, key, title, price, old_price
+    SELECT watcher_name, timestamp, kind, key, title, price, old_price, diff_text
     FROM changes
     WHERE watcher_name = ?
     ORDER BY id ASC
@@ -87,6 +88,31 @@ class ChangeRecord:
     title: str | None
     price: float | None
     old_price: float | None
+    diff_text: str | None = None
+
+    @classmethod
+    def from_change(cls, watcher_name: str, timestamp: datetime, change: Change) -> ChangeRecord:
+        """Create a ChangeRecord from a Change event instance.
+
+        Args:
+            watcher_name: Name of the watcher reporting the change.
+            timestamp: Time when the change was detected.
+            change: Change object from the event.
+
+        Returns:
+            A populated ChangeRecord.
+        """
+        item = change.item if change.item is not None else change.before
+        return cls(
+            watcher_name=watcher_name,
+            timestamp=timestamp,
+            kind=change.kind,
+            key=item.key if item is not None else None,
+            title=item.title if item is not None else None,
+            price=change.item.price if change.item is not None else None,
+            old_price=change.before.price if change.before is not None else None,
+            diff_text=change.diff_text,
+        )
 
 
 @dataclass(frozen=True)
@@ -110,6 +136,7 @@ class _ChangeRow(TypedDict):
     title: str | None
     price: float | None
     old_price: float | None
+    diff_text: str | None
 
 
 class _CheckRow(TypedDict):
@@ -122,21 +149,17 @@ class _CheckRow(TypedDict):
     error: str | None
 
 
-def _change_to_row(
-    watcher_name: str,
-    timestamp_iso: str,
-    change: Change,
-) -> _ChangeRow:
-    """Convert a single Change into a typed database row mapping."""
-    item = change.item if change.item is not None else change.before
+def _record_to_row(record: ChangeRecord) -> _ChangeRow:
+    """Convert a ChangeRecord into a typed database row mapping."""
     return {
-        "watcher_name": watcher_name,
-        "timestamp": timestamp_iso,
-        "kind": change.kind.value,
-        "key": item.key if item is not None else None,
-        "title": item.title if item is not None else None,
-        "price": change.item.price if change.item is not None else None,
-        "old_price": change.before.price if change.before is not None else None,
+        "watcher_name": record.watcher_name,
+        "timestamp": record.timestamp.isoformat(),
+        "kind": record.kind.value,
+        "key": record.key,
+        "title": record.title,
+        "price": record.price,
+        "old_price": record.old_price,
+        "diff_text": record.diff_text,
     }
 
 
@@ -173,9 +196,9 @@ class HistoryStore:
         """
         if not event.changes:
             return
-        timestamp_iso = event.timestamp.isoformat()
         rows = [
-            _change_to_row(event.watcher_name, timestamp_iso, change) for change in event.changes
+            _record_to_row(ChangeRecord.from_change(event.watcher_name, event.timestamp, change))
+            for change in event.changes
         ]
         with self._connect() as conn:
             conn.executemany(_INSERT_CHANGE, rows)
@@ -230,6 +253,7 @@ class HistoryStore:
                     title=row[4],
                     price=row[5],
                     old_price=row[6],
+                    diff_text=row[7],
                 )
 
     def checks(self, watcher_name: str | None = None) -> Iterator[CheckRecord]:

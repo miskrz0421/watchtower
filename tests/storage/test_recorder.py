@@ -56,3 +56,26 @@ def test_recorder_with_real_event_bus(store: HistoryStore) -> None:
     assert len(changes) == 1
     assert changes[0].key == "1"
     assert changes[0].title == "Flat"
+
+
+def test_recorder_records_text_diff_change(store: HistoryStore) -> None:
+    """Test HistoryRecorder recording a text diff change event from EventBus."""
+    bus = EventBus()
+    recorder = HistoryRecorder(store)
+    recorder.attach(bus)
+
+    now = datetime(2026, 11, 15, 12, 0, tzinfo=UTC)
+    diff = "@@ -1 +1 @@\n-old\n+new"
+    change_event = ChangeEvent(
+        watcher_name="blog",
+        timestamp=now,
+        changes=(Change(kind=ChangeKind.TEXT, diff_text=diff),),
+        summary="text changed",
+    )
+    bus.publish(ChangeDetected(watcher_name="blog", event=change_event, timestamp=now))
+
+    changes = list(store.changes())
+    assert len(changes) == 1
+    assert changes[0].watcher_name == "blog"
+    assert changes[0].kind == ChangeKind.TEXT
+    assert changes[0].diff_text == diff
