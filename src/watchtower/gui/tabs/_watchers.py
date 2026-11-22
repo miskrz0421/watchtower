@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from datetime import timedelta
+from typing import NamedTuple
 
 from PySide6.QtCore import QAbstractTableModel, QModelIndex, QObject, QPersistentModelIndex, Qt
 from PySide6.QtGui import QColor
@@ -14,26 +15,28 @@ from watchtower.core._commands import CheckNow, Pause, Resume
 from watchtower.core._scheduler import Scheduler
 from watchtower.core._states import WatcherStatus
 from watchtower.gui._bridge import EngineBridge
+from watchtower.gui._colours import STATE_COLOURS
 from watchtower.gui._format import format_time
-from watchtower.gui._statuses import initial_statuses
 
-_COLUMNS: tuple[str, ...] = ("Name", "Interval", "State", "Last Checked")
+_COLUMNS: tuple[str, ...] = ("Name", "Interval", "State", "Last checked")
 _ROOT_INDEX = QModelIndex()
 _DISPLAY_ROLE = int(Qt.ItemDataRole.DisplayRole)
 _FOREGROUND_ROLE = int(Qt.ItemDataRole.ForegroundRole)
+_STATE_COLUMN = 2
+_LAST_CHECK_COLUMN = 3
 
-# The same colors as the tray (ADR-024). A hollow dot marks a watcher that is
-# not checked at all: Paused and Disabled both have no next check (ADR-023).
-_STATE_STYLES: dict[WatcherState, tuple[str, QColor]] = {
-    WatcherState.ACTIVE: ("●", QColor("#2e9e44")),
-    WatcherState.BACKOFF: ("●", QColor("#e8a317")),
-    WatcherState.PAUSED: ("○", QColor("#8a8a8a")),
-    WatcherState.DISABLED: ("○", QColor("#d64545")),
+# A hollow dot marks a watcher that is not checked at all: Paused and Disabled
+# both have no next check (ADR-023).
+_DOTS: dict[WatcherState, str] = {
+    WatcherState.ACTIVE: "●",
+    WatcherState.BACKOFF: "●",
+    WatcherState.PAUSED: "○",
+    WatcherState.DISABLED: "○",
 }
 
 
 def _format_interval(interval: timedelta) -> str:
-    """Return an interval in the compact form used in the config, e.g. `1h 30m`.
+    """Return an interval like `1h 30m`, leaving out units that are zero.
 
     Args:
         interval: Time between checks of a watcher.
@@ -62,20 +65,34 @@ def _state_badge(state: WatcherState) -> str:
     Returns:
         Text of the state badge.
     """
-    dot, _colour = _STATE_STYLES[state]
-    return f"{dot} {state.value}"
+    return f"{_DOTS[state]} {state.value}"
 
 
-def _state_colour(state: WatcherState) -> QColor:
-    """Return the colour of a state's badge.
+class _WatcherRow(NamedTuple):
+    """Rendered table row for a single watcher status."""
+
+    name: str
+    interval: str
+    state: str
+    last_check: str
+
+
+def _format_row(status: WatcherStatus) -> _WatcherRow:
+    """Format a watcher's status into the four displayed columns.
 
     Args:
-        state: Runtime state of a watcher.
+        status: Status to format.
 
     Returns:
-        Colour used for the badge text.
+        Rendered watcher row for display.
     """
-    return _STATE_STYLES[state][1]
+    last_check = "never" if status.last_check is None else format_time(status.last_check)
+    return _WatcherRow(
+        name=status.name,
+        interval=_format_interval(status.interval),
+        state=_state_badge(status.state),
+        last_check=last_check,
+    )
 
 
 class WatchersTableModel(QAbstractTableModel):
@@ -88,7 +105,8 @@ class WatchersTableModel(QAbstractTableModel):
             parent: Qt parent object.
         """
         super().__init__(parent)
-        self._statuses: dict[str, WatcherStatus] = {}
+        self._rows: list[WatcherStatus] = []
+        self._row_of: dict[str, int] = {}
 
     def rowCount(self, parent: QModelIndex | QPersistentModelIndex = _ROOT_INDEX) -> int:
         """Return the number of rows in the model.
@@ -99,7 +117,7 @@ class WatchersTableModel(QAbstractTableModel):
         Returns:
             Number of watchers.
         """
-        return 0 if parent.isValid() else len(self._statuses)
+        return 0 if parent.isValid() else len(self._rows)
 
     def columnCount(self, parent: QModelIndex | QPersistentModelIndex = _ROOT_INDEX) -> int:
         """Return the number of columns in the model.
@@ -151,25 +169,13 @@ class WatchersTableModel(QAbstractTableModel):
             Cell text for DisplayRole, badge colour for ForegroundRole in the
             State column, or None for any other index or role.
         """
-        if not index.isValid() or not 0 <= index.column() < len(_COLUMNS):
+        if not index.isValid():
             return None
-        status = self.status_at(index.row())
-        if status is None:
-            return None
+        status = self._rows[index.row()]
         if role == _DISPLAY_ROLE:
-            match index.column():
-                case 0:
-                    return status.name
-                case 1:
-                    return _format_interval(status.interval)
-                case 2:
-                    return _state_badge(status.state)
-                case 3:
-                    if status.last_check is None:
-                        return "never"
-                    return format_time(status.last_check)
-        elif role == _FOREGROUND_ROLE and index.column() == 2:
-            return _state_colour(status.state)
+            return _format_row(status)[index.column()]
+        if role == _FOREGROUND_ROLE and index.column() == _STATE_COLUMN:
+            return STATE_COLOURS[status.state]
         return None
 
     def status_at(self, row: int) -> WatcherStatus | None:
@@ -181,8 +187,8 @@ class WatchersTableModel(QAbstractTableModel):
         Returns:
             The watcher's status, or None when the row is out of bounds.
         """
-        if 0 <= row < len(self._statuses):
-            return list(self._statuses.values())[row]
+        if 0 <= row < len(self._rows):
+            return self._rows[row]
         return None
 
     def set_statuses(self, statuses: list[WatcherStatus]) -> None:
@@ -192,7 +198,8 @@ class WatchersTableModel(QAbstractTableModel):
             statuses: One status per watcher.
         """
         self.beginResetModel()
-        self._statuses = {s.name: s for s in statuses}
+        self._rows = list(statuses)
+        self._row_of = {status.name: row for row, status in enumerate(self._rows)}
         self.endResetModel()
 
     def update_state(self, changed: WatcherStateChanged) -> None:
@@ -201,11 +208,11 @@ class WatchersTableModel(QAbstractTableModel):
         Args:
             changed: Event published when the watcher changed state.
         """
-        name = changed.watcher_name
-        if name not in self._statuses:
+        row = self._row_of.get(changed.watcher_name)
+        if row is None:
             return
-        self._statuses[name] = replace(self._statuses[name], state=changed.new_state)
-        self._emit_data_changed(name, 2, [_DISPLAY_ROLE, _FOREGROUND_ROLE])
+        self._rows[row] = replace(self._rows[row], state=changed.new_state)
+        self._emit_data_changed(row, _STATE_COLUMN, [_DISPLAY_ROLE, _FOREGROUND_ROLE])
 
     def update_last_check(self, check: CheckCompleted) -> None:
         """Show when a watcher was last checked.
@@ -213,21 +220,20 @@ class WatchersTableModel(QAbstractTableModel):
         Args:
             check: Event published at the end of the check.
         """
-        name = check.watcher_name
-        if name not in self._statuses:
+        row = self._row_of.get(check.watcher_name)
+        if row is None:
             return
-        self._statuses[name] = replace(self._statuses[name], last_check=check.timestamp)
-        self._emit_data_changed(name, 3, [_DISPLAY_ROLE])
+        self._rows[row] = replace(self._rows[row], last_check=check.timestamp)
+        self._emit_data_changed(row, _LAST_CHECK_COLUMN, [_DISPLAY_ROLE])
 
-    def _emit_data_changed(self, name: str, column: int, roles: list[int]) -> None:
+    def _emit_data_changed(self, row: int, column: int, roles: list[int]) -> None:
         """Tell attached views that one cell of a watcher changed.
 
         Args:
-            name: Name of the watcher whose cell changed.
+            row: Index of the watcher's row.
             column: Index of the changed column.
             roles: Roles whose values changed.
         """
-        row = list(self._statuses).index(name)
         cell = self.index(row, column)
         self.dataChanged.emit(cell, cell, roles)
 
@@ -236,19 +242,13 @@ class WatchersTab(QWidget):
     """Table of watchers; its buttons send commands with `Scheduler.submit`."""
 
     def __init__(
-        self,
-        bridge: EngineBridge,
-        scheduler: Scheduler,
-        statuses: list[WatcherStatus] | None = None,
-        parent: QWidget | None = None,
+        self, bridge: EngineBridge, scheduler: Scheduler, parent: QWidget | None = None
     ) -> None:
         """Initialize WatchersTab.
 
         Args:
             bridge: Signals of the running engine.
-            scheduler: Scheduler to send commands to.
-            statuses: Statuses read before the engine started; None when the
-                tab is built on its own, outside `run_gui`.
+            scheduler: Scheduler to read statuses from and send commands to.
             parent: Qt parent widget.
         """
         super().__init__(parent)
@@ -256,7 +256,7 @@ class WatchersTab(QWidget):
         layout = QVBoxLayout(self)
 
         self._model = WatchersTableModel(self)
-        self._model.set_statuses(initial_statuses(scheduler, statuses))
+        self._model.set_statuses(scheduler.statuses())
 
         self._table = QTableView(self)
         self._table.setModel(self._model)
@@ -302,8 +302,7 @@ class WatchersTab(QWidget):
         Returns:
             The watcher's name, or None when no row is selected.
         """
-        selection = self._table.selectionModel()
-        rows = selection.selectedRows() if selection is not None else []
+        rows = self._table.selectionModel().selectedRows()
         if not rows:
             return None
         status = self._model.status_at(rows[0].row())

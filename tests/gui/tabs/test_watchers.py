@@ -14,6 +14,7 @@ from watchtower import CheckCompleted, WatcherState, WatcherStateChanged
 from watchtower.core import CheckNow, Pause, Resume, Scheduler, WatcherStatus
 from watchtower.gui import EngineBridge
 from watchtower.gui.tabs import WatchersTab, WatchersTableModel
+from watchtower.gui.tabs._watchers import _format_interval
 
 pytestmark = pytest.mark.gui
 
@@ -27,6 +28,22 @@ def _statuses() -> list[WatcherStatus]:
     ]
 
 
+@pytest.mark.parametrize(
+    ("interval", "expected"),
+    [
+        (timedelta(0), "0s"),
+        (timedelta(seconds=45), "45s"),
+        (timedelta(minutes=15), "15m"),
+        (timedelta(hours=1, minutes=30), "1h 30m"),
+        (timedelta(hours=2, seconds=3), "2h 3s"),
+        (timedelta(days=1, hours=1, minutes=30, seconds=5), "1d 1h 30m 5s"),
+    ],
+)
+def test_format_interval(interval: timedelta, expected: str) -> None:
+    """Test that intervals use compact units and drop zero components."""
+    assert _format_interval(interval) == expected
+
+
 def test_model_empty_on_creation() -> None:
     """Test that a new WatchersTableModel is empty with valid column headers."""
     model = WatchersTableModel()
@@ -36,7 +53,7 @@ def test_model_empty_on_creation() -> None:
     assert model.headerData(0, Qt.Orientation.Horizontal) == "Name"
     assert model.headerData(1, Qt.Orientation.Horizontal) == "Interval"
     assert model.headerData(2, Qt.Orientation.Horizontal) == "State"
-    assert model.headerData(3, Qt.Orientation.Horizontal) == "Last Checked"
+    assert model.headerData(3, Qt.Orientation.Horizontal) == "Last checked"
     assert model.headerData(4, Qt.Orientation.Horizontal) is None
     assert model.data(model.index(0, 0)) is None
     assert model.status_at(0) is None
@@ -148,7 +165,8 @@ def test_tab_buttons_submit_commands_for_the_selected_watcher(
     scheduler = Scheduler()
     submitted: list[object] = []
     monkeypatch.setattr(scheduler, "submit", submitted.append)
-    tab = WatchersTab(EngineBridge(), scheduler, _statuses())
+    monkeypatch.setattr(scheduler, "statuses", _statuses)
+    tab = WatchersTab(EngineBridge(), scheduler)
     qtbot.addWidget(tab)
     table = tab.findChild(QTableView)
     assert table is not None
@@ -170,7 +188,8 @@ def test_tab_ignores_buttons_when_no_watcher_is_selected(
     scheduler = Scheduler()
     submitted: list[object] = []
     monkeypatch.setattr(scheduler, "submit", submitted.append)
-    tab = WatchersTab(EngineBridge(), scheduler, _statuses())
+    monkeypatch.setattr(scheduler, "statuses", _statuses)
+    tab = WatchersTab(EngineBridge(), scheduler)
     qtbot.addWidget(tab)
     buttons = {button.text(): button for button in tab.findChildren(QPushButton)}
 
@@ -179,10 +198,12 @@ def test_tab_ignores_buttons_when_no_watcher_is_selected(
     assert submitted == []
 
 
-def test_tab_updates_from_bridge_signals(qtbot: QtBot) -> None:
+def test_tab_updates_from_bridge_signals(qtbot: QtBot, monkeypatch: pytest.MonkeyPatch) -> None:
     """Test that the table follows the state and check events from the engine."""
     bridge = EngineBridge()
-    tab = WatchersTab(bridge, Scheduler(), _statuses())
+    scheduler = Scheduler()
+    monkeypatch.setattr(scheduler, "statuses", _statuses)
+    tab = WatchersTab(bridge, scheduler)
     qtbot.addWidget(tab)
     table = tab.findChild(QTableView)
     assert table is not None

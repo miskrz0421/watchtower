@@ -194,10 +194,9 @@ class ChangesTableModel(QAbstractTableModel):
         Returns:
             Cell data for DisplayRole, or None.
         """
-        if not index.isValid() or role != _DISPLAY_ROLE or not 0 <= index.column() < len(_COLUMNS):
+        if not index.isValid() or role != _DISPLAY_ROLE:
             return None
-        record = self.record_at(index.row())
-        return None if record is None else _format_row(record)[index.column()]
+        return _format_row(self._rows[index.row()])[index.column()]
 
     def record_at(self, row: int) -> ChangeRecord | None:
         """Return the change record at the given source model row index.
@@ -289,8 +288,7 @@ class ChangesTab(QWidget):
         splitter.addWidget(self._details)
 
         selection_model = self._table.selectionModel()
-        if selection_model is not None:
-            selection_model.selectionChanged.connect(self._on_selection_changed)
+        selection_model.selectionChanged.connect(self._on_selection_changed)
 
     def _on_search_changed(self, text: str) -> None:
         """Filter table rows matching the search text.

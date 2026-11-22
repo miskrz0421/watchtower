@@ -451,9 +451,8 @@ PR that makes the decision.
   it goes into an optional extra and the `dev` group, not into the core (ADR-003).
 - Note (M5, engine PR): `run_gui(scheduler, event_bus, history)` gets everything built by the CLI,
   so building watchers from a config stays in one place (`cli.py`) for `run` and `gui`. It builds
-  the bridge, the window and the tray before `EngineThread` starts, reads `Scheduler.statuses()`
-  once and passes those statuses to both, so nothing changes the states while they are read, and
-  stops the engine after the Qt event loop returns.
+  the bridge and the window before `EngineThread` starts, so the tabs read `Scheduler.statuses()`
+  while nothing else runs, and stops the engine after the Qt event loop returns.
 - Note (M5, tray PR): `TrayIcon` reads `Scheduler.statuses()` once and then follows
   `state_changed`. Its colour is the worst state (red Disabled, orange Backoff, grey when all are
   paused, green otherwise) and the tooltip counts the states. Pause all / Resume all submit one
