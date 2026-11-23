@@ -1,21 +1,19 @@
-# Python
+# Python: bytecode, packages, virtual environment
 __pycache__/
 *.py[cod]
 *.egg-info/
 build/
 dist/
-
-# uv / virtualenv
 .venv/
 
-# Tool caches, coverage data and local demo files (see pyproject.toml)
+# Tools: caches, coverage data and local demo files (see pyproject.toml)
 .artifacts/
 
-# Watchtower runtime data
+# Watchtower: databases and reports it writes
 *.db
 reports_out/
 
-# Editors / OS
+# Editors and operating systems
 .vscode/
 .idea/
 .DS_Store

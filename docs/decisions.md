@@ -237,6 +237,11 @@ PR that makes the decision.
   - Note (M5): CI runs `just check` on Ubuntu and Windows (`fail-fast: false`, so one failing
     system does not hide the other's result). The app is meant for both, and the GUI tests run on
     both with Qt's offscreen platform.
+  - Note (M6): config files are grouped by topic, with a heading per group: `pyproject.toml`
+    (project, optional dependencies, build, then one section per kind of tool), the `justfile`
+    (`[group]`, which `just` shows), `.gitignore`, the CI steps and `examples/config.yaml`. The
+    `dev` dependencies are split into `test`, `lint`, `types` and `extras`; `extras` refers to the
+    project's own extras, so each version is written once.
 - Alternatives: a Makefile (needs tabs, awkward on Windows, built for files rather than
   commands); only `uv run ...` lines in the README (nothing keeps them up to date); a Python
   task runner such as poethepoet (one more dependency inside the project, less known); a 100%
