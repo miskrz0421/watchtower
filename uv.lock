@@ -1407,6 +1407,8 @@ desktop = [
     { name = "desktop-notifier" },
 ]
 gui = [
+    { name = "matplotlib" },
+    { name = "pandas" },
     { name = "pyside6" },
 ]
 reports = [
@@ -1452,6 +1454,7 @@ requires-dist = [
     { name = "pandas", marker = "extra == 'reports'", specifier = ">=2.2" },
     { name = "pyside6", marker = "extra == 'gui'", specifier = ">=6.7" },
     { name = "pyyaml", specifier = ">=6.0" },
+    { name = "watchtower", extras = ["reports"], marker = "extra == 'gui'" },
 ]
 provides-extras = ["gui", "reports", "desktop"]
 

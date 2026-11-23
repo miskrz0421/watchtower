@@ -11,6 +11,7 @@ from watchtower import (
     ChangeDetected,
     ChangeEvent,
     CheckCompleted,
+    ConfigReloaded,
     Event,
     EventBus,
     FetchFailed,
@@ -35,6 +36,7 @@ _SIGNAL_FOR_EVENT = [
             watcher_name="a", old_state=WatcherState.ACTIVE, new_state=WatcherState.BACKOFF
         ),
     ),
+    ("config_reloaded", ConfigReloaded(statuses=())),
 ]
 
 

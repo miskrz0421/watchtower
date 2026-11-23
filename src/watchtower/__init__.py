@@ -21,6 +21,7 @@ from watchtower._errors import (
 from watchtower._events import (
     ChangeDetected,
     CheckCompleted,
+    ConfigReloaded,
     Event,
     EventBus,
     FetchFailed,
@@ -40,6 +41,7 @@ from watchtower._registry import (
     register_notifier,
     register_source,
 )
+from watchtower._retry import retry, timed
 from watchtower.config import load_config
 from watchtower.core import Scheduler, Watcher, WatcherBuilder
 from watchtower.diffs import Differ
@@ -55,6 +57,7 @@ __all__ = [
     "ChangeKind",
     "CheckCompleted",
     "ConfigError",
+    "ConfigReloaded",
     "Differ",
     "Event",
     "EventBus",
@@ -87,4 +90,6 @@ __all__ = [
     "register_filter",
     "register_notifier",
     "register_source",
+    "retry",
+    "timed",
 ]

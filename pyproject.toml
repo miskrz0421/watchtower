@@ -30,7 +30,8 @@ watchtower-fake-listings = "fake_listings.server:main"
 
 # For users: features that need more than the core.
 [project.optional-dependencies]
-gui = ["pyside6>=6.7"]
+# The Reports tab of the app draws the charts of `reports`.
+gui = ["pyside6>=6.7", "watchtower[reports]"]
 reports = ["pandas>=2.2", "matplotlib>=3.9"]
 desktop = ["desktop-notifier>=6.2.0"]
 
