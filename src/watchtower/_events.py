@@ -8,9 +8,12 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Any, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar
 
 from watchtower._models import ChangeEvent
+
+if TYPE_CHECKING:
+    from watchtower.core._states import WatcherStatus
 
 _logger = logging.getLogger(__name__)
 
@@ -76,6 +79,13 @@ class WatcherStateChanged(Event):
     watcher_name: str
     old_state: WatcherState
     new_state: WatcherState
+
+
+@dataclass(frozen=True)
+class ConfigReloaded(Event):
+    """Published when a reload has replaced the watchers, with the status of each new one."""
+
+    statuses: tuple[WatcherStatus, ...]
 
 
 class EventBus:

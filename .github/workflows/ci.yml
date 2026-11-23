@@ -15,11 +15,16 @@ jobs:
     env:
       QT_QPA_PLATFORM: offscreen
     steps:
+      # Code and tools
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
+      - run: uv tool install rust-just
+
+      # Dependencies
       - name: Install Qt system library
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libegl1
       - run: uv sync --frozen
-      - run: uv tool install rust-just
+
+      # The checks
       - run: just check

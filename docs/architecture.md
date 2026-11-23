@@ -32,16 +32,18 @@ src/watchtower/
 ├── _errors.py       WatchtowerError → SourceError, ParseError, NotifyError, StorageError, ConfigError, MissingDependencyError (private)
 ├── _registry.py     @register_* decorators, create(kind, name, **params) (private)
 ├── _events.py       event dataclasses + EventBus (private)
+├── _retry.py        @retry, @timed (private)
 ├── _http.py         shared HTTP settings: timeout, user agent (private)
 ├── cli.py           argparse CLI entry point: check / run / plugins / gui / report
-├── sources/         _base (Template Method), _fake, _file, _rss, _webpage, _json_api, _http, _parsing
+├── sources/         _base (Template Method), _fake, _file, _rss, _webpage, _json_api, _http, _polite (Proxy),
+│                    _parsing
 ├── storage/         _snapshots (Memento), _history, _recorder
 ├── diffs/           _base (Strategy), _text, _items
 ├── filters/         _base (Specification + Composite: And/Or/Not), _builtin
 ├── notifiers/       _base (Adapter), _console, _discord, _desktop, _format (shared change formatting), _decorators
 ├── config/          _loader (YAML loader), _intervals (interval parsing), _filters (filter builder)
 ├── core/            _watcher, _builder (Builder), _scheduler (Mediator), _clock, _logging_observer,
-│                    _states (State), _commands, _retry
+│                    _states (State), _commands
 ├── reports/         _tables (pandas), _charts (matplotlib)
 └── gui/             _app (run_gui), _engine (EngineThread), _bridge (EngineBridge), _tray,
     │                _main_window
@@ -81,6 +83,7 @@ These are the contracts between the packages. A change to one needs an entry in
 | `ChangeDetected` | A ChangeEvent passed the filters | HistoryRecorder, LoggingObserver, GUI Changes tab |
 | `FetchFailed` | A source raised after retries | GUI Log tab |
 | `WatcherStateChanged` | State machine transition (published by the Scheduler) | LoggingObserver, GUI Watchers tab, tray icon |
+| `ConfigReloaded` | The scheduler replaced the watchers after a `ReloadConfig` | GUI Watchers tab, tray icon |
 
 ## Watcher state machine
 
@@ -128,7 +131,7 @@ Each thread opens its own connection (`sqlite3` connections must not be shared a
 |---|---|
 | Template Method | `sources/_base.py`: `snapshot()` → `fetch()` + `parse()` |
 | Memento | `storage/`: `SnapshotStore` |
-| Proxy | `sources/_http.py`: polite + caching HTTP |
+| Proxy | `sources/_polite.py`: `PoliteTransport`, polite + caching HTTP |
 | Factory / Registry | `_registry.py`, used by the YAML loader |
 | Strategy | `diffs/`: TextDiff, ItemDiff |
 | Specification + Composite | `filters/`: `&`, `\|`, `~` → And/Or/Not |
