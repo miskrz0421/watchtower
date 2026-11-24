@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 from watchtower._errors import MissingDependencyError, NotifyError
 from watchtower._models import ChangeEvent
@@ -15,6 +15,7 @@ from watchtower.notifiers._format import change_text, truncate
 _MAX_MESSAGE_LENGTH = 2000
 
 
+@runtime_checkable
 class _NotificationBackend(Protocol):
     """The part of DesktopNotifierSync that DesktopNotifier uses."""
 

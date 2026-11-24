@@ -563,6 +563,46 @@ def test_missing_optional_dependency_is_config_error(
             "database: 12345\nwatchers: []\n",
             "Config file key 'database' must be a non-empty string",
         ),
+        (
+            dedent("""
+                watchers:
+                  - name: W
+                    source: { type: fake }
+                    diff: { type: text }
+                    filters:
+                      - { price_below: abc }
+                """),
+            "Watcher 'W' key 'filters': filter 'price_below'",
+        ),
+        (
+            dedent("""
+                watchers:
+                  - name: W
+                    source: { type: fake }
+                    diff: { type: text }
+                    filters:
+                      - { text_contains: 123 }
+                """),
+            "Watcher 'W' key 'filters': filter 'text_contains'",
+        ),
+        (
+            dedent("""
+                watchers:
+                  - name: W
+                    source: { type: webpage, url: 123, selector: ".offer" }
+                    diff: { type: text }
+                """),
+            "Watcher 'W' key 'source'",
+        ),
+        (
+            dedent("""
+                watchers:
+                  - name: W
+                    source: { type: fake }
+                    diff: { type: text, context_lines: "a" }
+                """),
+            "Watcher 'W' key 'diff'",
+        ),
         ("database: ''\nwatchers: []\n", "Config file key 'database' must be a non-empty string"),
     ],
 )
