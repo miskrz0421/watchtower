@@ -57,6 +57,7 @@ class _FakeBackend:
     """Minimal ``_NotificationBackend`` stand-in for tests."""
 
     def send(self, title: str, message: str) -> str:
+        """Pretend to show a notification."""
         return "id"
 
 
@@ -91,7 +92,9 @@ class _FakeBackend:
         ("notifier", "desktop", {"backend": _FakeBackend()}, DesktopNotifier),
     ],
 )
-def test_all_builtin_plugins_are_registered(kind, name, params, expected) -> None:
+def test_all_builtin_plugins_are_registered(
+    kind: str, name: str, params: dict[str, object], expected: type[object]
+) -> None:
     """Every built-in plugin can be constructed through the registry."""
     instance = create(kind, name, **params)
     assert isinstance(instance, expected)

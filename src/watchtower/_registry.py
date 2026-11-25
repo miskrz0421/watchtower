@@ -18,7 +18,7 @@ _T = TypeVar("_T")
 
 type _Kind = Literal["source", "differ", "filter", "notifier"]
 
-# Every plugin class has its own constructor, known only at runtime.
+# Every plugin class has its own constructor, known only at runtime (ADR-034).
 type _PluginArg = Any
 
 # Types a config value can have; arguments of other types are not checked.
@@ -45,6 +45,15 @@ def _base_class_for(kind: _Kind) -> type[object]:
 
     The import is lazy (inside the function) so that importing this module never
     triggers imports of the plugin packages, avoiding circular imports.
+
+    Args:
+        kind: The plugin category.
+
+    Returns:
+        The abstract base class of the category.
+
+    Raises:
+        ValueError: If the category is unknown.
     """
     match kind:
         case "source":
@@ -83,7 +92,18 @@ def _register(kind: _Kind, name: str) -> Callable[[type[_T]], type[_T]]:
     """
 
     def decorator(cls: type[_T]) -> type[_T]:
-        """Register the class and return it unchanged."""
+        """Register the class and return it unchanged.
+
+        Args:
+            cls: Plugin class to register.
+
+        Returns:
+            The same class.
+
+        Raises:
+            TypeError: If the class is not a subclass of the base class for ``kind``.
+            ValueError: If ``name`` is already registered for ``kind``.
+        """
         base = _base_class_for(kind)
         if not isinstance(cls, type) or not issubclass(cls, base):
             msg = (
@@ -304,7 +324,7 @@ def create(kind: str, name: str, /, **params: _PluginArg) -> Source | Differ | F
 
     Args:
         kind: Category of the plugin ('source', 'differ', 'filter', 'notifier').
-            Positional-only, so that a constructor parameter named e.g.``kind``
+            Positional-only, so that a constructor parameter named e.g. ``kind``
             (such as ``KindIs``'s) can be passed through ``**params``.
         name: Registered name of the plugin. Positional-only for the same reason.
         **params: Arguments passed to the plugin constructor.
