@@ -568,6 +568,27 @@ PR that makes the decision.
 - Consequences: whatever is logged as a message is visible, so messages must not contain secrets. The
   error text of a source may contain its address, so a secret token in a source URL would be shown.
 
+## ADR-033: A disabled watcher alerts the user through its own notifiers
+- Status: accepted · M6
+- Context: a watcher that fails five times in a row is not checked any more (ADR-023). The log and
+  the tray show it, but a user waiting for a Discord message would only notice that nothing comes.
+- Decision:
+  - When a watcher becomes `Disabled`, the scheduler calls `Watcher.send_alert`, which sends a
+    `ChangeEvent` with a summary and no changes to the watcher's notifiers. A notifier that fails is
+    logged, as with changes.
+  - The alert is sent once per transition, so a `CheckNow` that fails on a disabled watcher
+    does not repeat it. `Backoff` and recovery send nothing.
+  - The alert is not published as `ChangeDetected`: nothing on the website changed, so it does not
+    belong in the history. Observers get `WatcherStateChanged`.
+  - Rate limits and quiet hours (ADR-026) apply to it as to any event: the user asked for quiet, and
+    the log and the tray still show the state.
+- Alternatives: an observer of `WatcherStateChanged` that sends the alerts (it would need to know the
+  notifiers of every watcher, and the bus is for global observers); a second `Notifier` method (every
+  plugin would have to implement it); putting the last error into the alert (it may contain an
+  address with a secret, and the log has it).
+- Consequences: a notifier must accept an event without changes. The alert runs in the engine
+  thread, so a slow notifier delays the next check, as with changes.
+
 ## ADR-034: The registry checks plugins and their arguments
 - Status: accepted · M6
 - Context: a wrong value in the config, such as `price_below: abc`, was found only during a check,
