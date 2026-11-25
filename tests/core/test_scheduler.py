@@ -11,6 +11,8 @@ import pytest
 
 from watchtower import (
     Change,
+    ChangeDetected,
+    ChangeEvent,
     CheckCompleted,
     EventBus,
     Snapshot,
@@ -20,6 +22,7 @@ from watchtower import (
 )
 from watchtower.core import CheckNow, FakeClock, Pause, Resume, Scheduler, Watcher, WatcherStatus
 from watchtower.diffs import Differ, TextDiff
+from watchtower.notifiers import Notifier
 from watchtower.sources import FakeSource, Source
 
 _START = datetime(2026, 11, 16, 12, 0, tzinfo=UTC)
@@ -66,6 +69,27 @@ class _BuggyDiffer(Differ):
         raise RuntimeError(msg)
 
 
+class _AlertLog(Notifier):
+    """Notifier keeping the events it gets."""
+
+    def __init__(self) -> None:
+        """Start with no events."""
+        self.events: list[ChangeEvent] = []
+
+    def send(self, event: ChangeEvent) -> None:
+        """Remember the event."""
+        self.events.append(event)
+
+
+class _BrokenNotifier(Notifier):
+    """Notifier whose channel does not work."""
+
+    def send(self, event: ChangeEvent) -> None:
+        """Fail like an unreachable channel would."""
+        msg = "channel down"
+        raise RuntimeError(msg)
+
+
 class _CheckLog:
     """Keeps the names of checked watchers, in order, from the bus."""
 
@@ -80,13 +104,18 @@ class _CheckLog:
 
 
 def _watcher(
-    name: str, seconds: float, event_bus: EventBus, source: Source | None = None
+    name: str,
+    seconds: float,
+    event_bus: EventBus,
+    source: Source | None = None,
+    notifiers: list[Notifier] | None = None,
 ) -> Watcher:
     """Return a text watcher checked every `seconds` that publishes on the bus."""
     return Watcher(
         name=name,
         source=source if source is not None else FakeSource(contents=["page"]),
         differ=TextDiff(),
+        notifiers=notifiers,
         event_bus=event_bus,
         interval=timedelta(seconds=seconds),
     )
@@ -245,6 +274,91 @@ def test_fifth_failure_disables_the_watcher(clock: FakeClock, bus: EventBus) -> 
         (WatcherState.ACTIVE, WatcherState.BACKOFF),
         (WatcherState.BACKOFF, WatcherState.DISABLED),
     ]
+
+
+def _fail_checks(scheduler: Scheduler, clock: FakeClock, count: int) -> None:
+    """Run as many checks of a broken watcher, each after its longest wait."""
+    for _ in range(count):
+        scheduler.run_pending()
+        clock.advance(3600)
+
+
+def test_disabled_watcher_alerts_the_user_once(clock: FakeClock, bus: EventBus) -> None:
+    """Test that only the fifth failure sends an alert, also after a failing CheckNow."""
+    alerts = _AlertLog()
+    scheduler = Scheduler(clock)
+    scheduler.add(_watcher("broken", 30, bus, _DownSource(), [alerts]))
+
+    _fail_checks(scheduler, clock, 4)
+    alerts_in_backoff = list(alerts.events)
+    disabled_at = clock.now()
+    _fail_checks(scheduler, clock, 1)
+    scheduler.submit(CheckNow("broken"))
+    scheduler.run_pending()
+
+    assert alerts_in_backoff == []
+    assert alerts.events == [
+        ChangeEvent(
+            watcher_name="broken",
+            timestamp=disabled_at,
+            changes=(),
+            summary="disabled after too many failed checks in a row",
+        )
+    ]
+
+
+def test_resumed_watcher_alerts_again_when_it_is_disabled_again(
+    clock: FakeClock, bus: EventBus
+) -> None:
+    """Test that every move to Disabled is worth an alert."""
+    alerts = _AlertLog()
+    scheduler = Scheduler(clock)
+    scheduler.add(_watcher("broken", 30, bus, _DownSource(), [alerts]))
+
+    _fail_checks(scheduler, clock, 5)
+    scheduler.submit(Resume("broken"))
+    _fail_checks(scheduler, clock, 5)
+
+    assert len(alerts.events) == 2
+
+
+def test_disabled_alert_is_not_a_detected_change(clock: FakeClock, bus: EventBus) -> None:
+    """Test that the alert does not reach the observers of changes, such as the history."""
+    changes: list[ChangeDetected] = []
+    bus.subscribe(ChangeDetected, changes.append)
+    scheduler = Scheduler(clock)
+    scheduler.add(_watcher("broken", 30, bus, _DownSource(), [_AlertLog()]))
+
+    _fail_checks(scheduler, clock, 5)
+
+    assert changes == []
+
+
+def test_broken_notifier_does_not_stop_the_alert_of_the_others(
+    clock: FakeClock, bus: EventBus, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Test that a failing notifier is logged and the next one still gets the alert."""
+    alerts = _AlertLog()
+    scheduler = Scheduler(clock)
+    scheduler.add(_watcher("broken", 30, bus, _DownSource(), [_BrokenNotifier(), alerts]))
+
+    _fail_checks(scheduler, clock, 5)
+
+    assert len(alerts.events) == 1
+    assert "failed for watcher 'broken'" in caplog.text
+
+
+def test_disabled_watcher_without_a_bus_still_alerts(clock: FakeClock) -> None:
+    """Test that the alert does not depend on an event bus."""
+    alerts = _AlertLog()
+    scheduler = Scheduler(clock)
+    scheduler.add(
+        Watcher(name="broken", source=_DownSource(), differ=TextDiff(), notifiers=[alerts])
+    )
+
+    _fail_checks(scheduler, clock, 5)
+
+    assert len(alerts.events) == 1
 
 
 def test_watcher_recovers_after_a_successful_check(clock: FakeClock, bus: EventBus) -> None:

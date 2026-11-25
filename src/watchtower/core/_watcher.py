@@ -185,6 +185,22 @@ class Watcher:
             except Exception:
                 _logger.exception("Notifier %r failed for watcher %r", notifier, self._name)
 
+    def send_alert(self, summary: str, timestamp: datetime) -> None:
+        """Tell this watcher's notifiers about the watcher itself, with no changes (ADR-033).
+
+        Args:
+            summary: What happened to the watcher.
+            timestamp: When it happened.
+        """
+        self._dispatch_notifiers(
+            ChangeEvent(
+                watcher_name=self._name,
+                timestamp=timestamp,
+                changes=(),
+                summary=summary,
+            )
+        )
+
     def _handle_changes(self, changes: list[Change], timestamp: datetime) -> ChangeEvent:
         """Construct ChangeEvent, dispatch to notifiers, and publish ChangeDetected.
 

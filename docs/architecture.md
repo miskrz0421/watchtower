@@ -66,7 +66,7 @@ These are the contracts between the packages. A change to one needs an entry in
 | **Item** | One thing being watched (a listing, a feed entry) | Frozen dataclass. Fields: `key`, `title`, `url`, `price`, `text`, `published`. Hashable and compared by value, so diffs can use sets. |
 | **Snapshot** | The state of a source at one moment | Frozen. Holds `items` (a tuple), `raw_text`, and `taken_at`. Serialisable to JSON for storage. |
 | **Change** | One difference between two snapshots | `kind` ∈ {new, removed, changed, text}, plus `item` / `before` / `diff_text`. |
-| **ChangeEvent** | What a notifier receives | Watcher name, time, a tuple of the Changes that passed the filters, and a `summary` string. |
+| **ChangeEvent** | What a notifier receives | Watcher name, time, a tuple of the Changes that passed the filters, and a `summary` string. An alert about the watcher itself has no Changes (ADR-033). |
 | **Source** | Where data comes from | `snapshot()` is a fixed template calling the abstract `fetch()` and `parse()`; `parse()` returns an iterable of Items. Raises `SourceError` / `ParseError`. |
 | **Differ** | How to compare (Strategy) | `diff(old: Snapshot or None, new) → list[Change]`. `old is None` (first run) → no changes. |
 | **Filter** | What matters (Specification) | `matches(change) → bool`; combine with `&`, `|`, `~`. Filters work on single Changes, not on whole events. |
@@ -100,7 +100,8 @@ Paused ──────────────────────┘    
 Each state is an object (State pattern, ADR-023): `delay(interval)` says when the watcher is
 checked next (None: not at all), and `after_success()` / `after_failure()` give the state that
 follows a check. The Scheduler keeps one per watcher and publishes `WatcherStateChanged` when the
-kind changes. `Paused` and `Disabled` only leave via an explicit `Resume`.
+kind changes. A watcher that becomes `Disabled` alerts the user through its own notifiers
+(ADR-033). `Paused` and `Disabled` only leave via an explicit `Resume`.
 
 ## Storage (SQLite, one file)
 

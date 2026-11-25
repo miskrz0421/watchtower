@@ -8,13 +8,15 @@ import threading
 from datetime import datetime, timedelta
 
 from watchtower._errors import WatchtowerError
-from watchtower._events import WatcherStateChanged
+from watchtower._events import WatcherState, WatcherStateChanged
 from watchtower.core._clock import Clock, SystemClock
 from watchtower.core._commands import CheckNow, Command, Pause, ReloadConfig, Resume
 from watchtower.core._states import Active, Backoff, Paused, State, WatcherStatus
 from watchtower.core._watcher import Watcher
 
 _logger = logging.getLogger(__name__)
+
+_DISABLED_ALERT = "disabled after too many failed checks in a row"
 
 
 class Scheduler:
@@ -195,7 +197,7 @@ class Scheduler:
             self._due[name] = self._clock.now() + delay
 
     def _set_state(self, watcher: Watcher, new_state: State) -> None:
-        """Give a watcher a new state and publish WatcherStateChanged if its kind changed.
+        """Give a watcher a new state and announce it if its kind changed.
 
         Args:
             watcher: Watcher whose state changes.
@@ -203,15 +205,29 @@ class Scheduler:
         """
         old_state = self._states[watcher.name]
         self._states[watcher.name] = new_state
-        if new_state.kind is not old_state.kind and watcher.event_bus is not None:
+        if new_state.kind is not old_state.kind:
+            self._announce(watcher, old_state.kind, new_state.kind)
+
+    def _announce(self, watcher: Watcher, old_kind: WatcherState, new_kind: WatcherState) -> None:
+        """Publish WatcherStateChanged and alert the user if the watcher is now disabled.
+
+        Args:
+            watcher: Watcher that changed state.
+            old_kind: State it was in.
+            new_kind: State it is in now.
+        """
+        now = self._clock.now()
+        if watcher.event_bus is not None:
             watcher.event_bus.publish(
                 WatcherStateChanged(
                     watcher_name=watcher.name,
-                    old_state=old_state.kind,
-                    new_state=new_state.kind,
-                    timestamp=self._clock.now(),
+                    old_state=old_kind,
+                    new_state=new_kind,
+                    timestamp=now,
                 )
             )
+        if new_kind is WatcherState.DISABLED:
+            watcher.send_alert(_DISABLED_ALERT, now)
 
     def _seconds_until_next_due(self) -> float | None:
         """Return how long to wait before the earliest due check.
