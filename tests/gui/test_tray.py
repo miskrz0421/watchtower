@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
+
 import pytest
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QSystemTrayIcon, QWidget
 from pytestqt.qtbot import QtBot
 
-from watchtower import EventBus, WatcherState, WatcherStateChanged
-from watchtower.core import Scheduler, Watcher
+from watchtower import ConfigReloaded, EventBus, WatcherState, WatcherStateChanged
+from watchtower.core import ReloadConfig, Scheduler, Watcher, WatcherStatus
 from watchtower.diffs import TextDiff
 from watchtower.gui import EngineBridge, TrayIcon
 from watchtower.sources import FakeSource
@@ -100,6 +102,31 @@ def test_pause_all_and_resume_all_send_commands(qtbot: QtBot, hourly_scheduler: 
 
     assert paused == [WatcherState.PAUSED]
     assert resumed == [WatcherState.ACTIVE]
+
+
+def test_reload_config_sends_the_command(
+    qtbot: QtBot, hourly_scheduler: Scheduler, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Test that the menu's Reload config sends one command for the whole config."""
+    submitted: list[object] = []
+    monkeypatch.setattr(hourly_scheduler, "submit", submitted.append)
+    tray, _, _ = _tray(qtbot, hourly_scheduler)
+
+    _menu_action(tray, "Reload config")
+
+    assert submitted == [ReloadConfig()]
+
+
+def test_reload_replaces_the_states(qtbot: QtBot, hourly_scheduler: Scheduler) -> None:
+    """Test that after a reload the icon shows the new watchers and forgets the old ones."""
+    tray, bridge, _ = _tray(qtbot, hourly_scheduler)
+    bridge.state_changed.emit(_state_changed(WatcherState.DISABLED))
+    new_status = WatcherStatus("new", WatcherState.ACTIVE, timedelta(hours=1), None)
+
+    bridge.config_reloaded.emit(ConfigReloaded(statuses=(new_status,)))
+
+    assert _icon_colour(tray) == QColor("#2e9e44")
+    assert tray.toolTip() == "Watchtower: 1 active"
 
 
 def test_open_shows_the_window(qtbot: QtBot, hourly_scheduler: Scheduler) -> None:

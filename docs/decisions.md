@@ -546,6 +546,8 @@ PR that makes the decision.
     the new watchers continue from the saved snapshots; without one their first check is a baseline.
   - A scheduler that can reload keeps running without watchers, so a file with an empty list can be
     corrected and reloaded.
+  - *Reload config* is a button of the Watchers tab and an entry of the tray menu; it does not depend
+    on the selected watcher. A failed reload is shown in the log.
 
 ## ADR-034: The registry checks plugins and their arguments
 - Status: accepted · M6

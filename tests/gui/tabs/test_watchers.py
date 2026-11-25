@@ -11,7 +11,7 @@ from PySide6.QtWidgets import QPushButton, QTableView
 from pytestqt.qtbot import QtBot
 
 from watchtower import CheckCompleted, WatcherState, WatcherStateChanged
-from watchtower.core import CheckNow, Pause, Resume, Scheduler, WatcherStatus
+from watchtower.core import CheckNow, Pause, ReloadConfig, Resume, Scheduler, WatcherStatus
 from watchtower.gui import EngineBridge
 from watchtower.gui.tabs import WatchersTab, WatchersTableModel
 from watchtower.gui.tabs._watchers import _format_interval
@@ -170,7 +170,7 @@ def test_tab_buttons_submit_commands_for_the_selected_watcher(
     table = tab.findChild(QTableView)
     assert table is not None
     buttons = {button.text(): button for button in tab.findChildren(QPushButton)}
-    assert set(buttons) == {"Pause", "Resume", "Check now"}
+    assert set(buttons) == {"Pause", "Resume", "Check now", "Reload config"}
 
     table.selectRow(0)
     buttons["Pause"].click()
@@ -195,6 +195,20 @@ def test_tab_ignores_buttons_when_no_watcher_is_selected(
     buttons["Pause"].click()
 
     assert submitted == []
+
+
+def test_reload_button_needs_no_selection(qtbot: QtBot, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test that Reload config is sent for the whole file, whatever is selected."""
+    scheduler = Scheduler()
+    submitted: list[object] = []
+    monkeypatch.setattr(scheduler, "submit", submitted.append)
+    tab = WatchersTab(EngineBridge(), scheduler)
+    qtbot.addWidget(tab)
+    buttons = {button.text(): button for button in tab.findChildren(QPushButton)}
+
+    buttons["Reload config"].click()
+
+    assert submitted == [ReloadConfig()]
 
 
 def test_tab_updates_from_bridge_signals(qtbot: QtBot, monkeypatch: pytest.MonkeyPatch) -> None:
