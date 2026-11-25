@@ -12,11 +12,8 @@ from watchtower._events import WatcherState, WatcherStateChanged
 from watchtower.core._commands import Pause, Resume
 from watchtower.core._scheduler import Scheduler
 from watchtower.gui._bridge import EngineBridge
+from watchtower.gui._colours import STATE_COLOURS
 
-_GREEN = QColor("#2e9e44")
-_ORANGE = QColor("#e8a317")
-_RED = QColor("#d64545")
-_GREY = QColor("#8a8a8a")
 _ICON_SIZE = 64
 
 
@@ -109,7 +106,7 @@ class TrayIcon(QSystemTrayIcon):
 
 
 def _health_colour(states: set[WatcherState]) -> QColor:
-    """Return the colour of the worst state: red, orange, grey when all paused, else green.
+    """Return the colour of the worst state; paused watchers count only when all are paused.
 
     Args:
         states: The states of all watchers.
@@ -118,14 +115,14 @@ def _health_colour(states: set[WatcherState]) -> QColor:
         The colour for the tray icon.
     """
     if WatcherState.DISABLED in states:
-        colour = _RED
+        worst = WatcherState.DISABLED
     elif WatcherState.BACKOFF in states:
-        colour = _ORANGE
+        worst = WatcherState.BACKOFF
     elif states == {WatcherState.PAUSED}:
-        colour = _GREY
+        worst = WatcherState.PAUSED
     else:
-        colour = _GREEN
-    return colour
+        worst = WatcherState.ACTIVE
+    return STATE_COLOURS[worst]
 
 
 def _dot_icon(colour: QColor) -> QIcon:
