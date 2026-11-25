@@ -3,6 +3,17 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+from typing import (
+    Annotated,
+    Any,
+    ClassVar,
+    Generic,
+    Literal,
+    Protocol,
+    TypeVar,
+    cast,
+    runtime_checkable,
+)
 
 import pytest
 
@@ -20,6 +31,15 @@ from watchtower import (
     register_source,
 )
 from watchtower._models import Change, Item, Snapshot
+from watchtower._registry import (
+    _base_class_for,
+    _is_checkable,
+    _is_protocol_subclass,
+    _Kind,
+    _matches,
+    _strip_annotated,
+    _validate_init_args,
+)
 from watchtower.diffs import ItemDiff, TextDiff
 from watchtower.diffs._base import Differ
 from watchtower.filters import (
@@ -270,3 +290,162 @@ def test_desktop_notifier_accepts_runtime_checkable_backend() -> None:
 
     notifier = create_notifier("desktop", backend=FakeBackend())
     assert isinstance(notifier, DesktopNotifier)
+
+
+def test_base_class_for_unknown_kind_raises() -> None:
+    """An invalid kind raises ValueError even though it's unreachable via the Literal."""
+    with pytest.raises(ValueError, match="Unknown plugin kind"):
+        _base_class_for(cast(_Kind, "bogus"))
+
+
+def test_strip_annotated_unwraps_annotated() -> None:
+    """_strip_annotated returns the underlying type of Annotated."""
+    assert _strip_annotated(Annotated[int, "metadata"]) is int
+
+
+def test_is_checkable_any_is_false() -> None:
+    """Any is not checkable with isinstance."""
+    assert _is_checkable(Any) is False
+
+
+def test_is_checkable_protocol_subclass_without_runtime_checkable() -> None:
+    """A Protocol without @runtime_checkable is not checkable."""
+
+    class _Proto(Protocol):
+        def method(self) -> int: ...
+
+    assert _is_protocol_subclass(_Proto) is True
+    assert _is_checkable(_Proto) is False
+
+
+def test_is_checkable_runtime_checkable_protocol() -> None:
+    """A @runtime_checkable Protocol is checkable."""
+
+    @runtime_checkable
+    class _Proto(Protocol):
+        def method(self) -> int: ...
+
+    assert _is_protocol_subclass(_Proto) is True
+    assert _is_checkable(_Proto) is True
+
+
+def test_is_checkable_protocol_itself_is_not_a_subclass() -> None:
+    """Protocol itself is not treated as a Protocol subclass."""
+    assert _is_protocol_subclass(Protocol) is False
+
+
+def test_is_checkable_generic_protocol() -> None:
+    """Generic parameterized Protocols are checkable only when @runtime_checkable."""
+    T = TypeVar("T")
+
+    class _GenNonRt(Protocol, Generic[T]):
+        def method(self) -> T: ...
+
+    @runtime_checkable
+    class _GenRt(Protocol, Generic[T]):
+        def method(self) -> T: ...
+
+    assert _is_checkable(_GenNonRt[int]) is False
+    assert _is_checkable(_GenRt[int]) is True
+
+
+def test_matches_runtime_checkable_protocol() -> None:
+    """A @runtime_checkable Protocol accepts conforming values and rejects others."""
+
+    @runtime_checkable
+    class _Proto(Protocol):
+        def method(self) -> int: ...
+
+    class _Impl:
+        def method(self) -> int:
+            return 1
+
+    assert _matches(_Impl(), _Proto) is True
+    assert _matches(object(), _Proto) is False
+
+
+def test_matches_non_checkable_protocol_returns_true() -> None:
+    """A Protocol without @runtime_checkable makes isinstance raise TypeError -> True."""
+
+    class _Proto(Protocol):
+        def method(self) -> int: ...
+
+    assert _matches(object(), _Proto) is True
+
+
+def test_matches_generic_non_checkable_protocol_returns_true() -> None:
+    """A generic Parameterized non-@runtime_checkable Protocol is skipped."""
+    T = TypeVar("T")
+
+    class _GenProto(Protocol, Generic[T]):
+        def method(self) -> T: ...
+
+    assert _matches(object(), _GenProto[int]) is True
+
+
+def test_validate_init_args_signature_error() -> None:
+    """A class whose __init__ has no inspectable signature is skipped."""
+
+    class _NoSignature:
+        __init__ = int  # type: ignore[method-assign]
+
+    _validate_init_args(_NoSignature)
+
+
+def test_validate_init_args_get_type_hints_error() -> None:
+    """A class with an unresolvable annotation is skipped."""
+
+    class _Unresolvable:
+        def __init__(self, value: NotDefinedAnywhere) -> None:  # noqa: F821
+            self.value = value
+
+    _validate_init_args(_Unresolvable, "anything")
+
+
+def test_validate_init_args_var_positional_error() -> None:
+    """Invalid element in *args: T raises TypeError."""
+
+    class _VarPos:
+        def __init__(self, *items: int) -> None:
+            self.items = items
+
+    with pytest.raises(TypeError, match="items"):
+        _validate_init_args(_VarPos, 1, 2, "not-an-int")
+
+
+def test_validate_init_args_var_keyword_error() -> None:
+    """Invalid value in **kwargs: T raises TypeError."""
+
+    class _VarKw:
+        def __init__(self, **values: int) -> None:
+            self.values = values
+
+    with pytest.raises(TypeError, match="values"):
+        _validate_init_args(_VarKw, a=1, b="not-an-int")
+
+
+def test_list_plugins_unknown_kind() -> None:
+    """An unknown kind returns an empty list for that kind."""
+    assert list_plugins("bogus") == {"bogus": []}
+
+
+def test_matches_literal_annotation_returns_true() -> None:
+    """Exotic annotations (Literal, ClassVar, ...) that can't be checked are skipped."""
+    assert _matches("anything", Literal["a", "b"]) is True
+    assert _matches(42, Literal["a", "b"]) is True
+
+
+def test_matches_forward_ref_annotation_returns_true() -> None:
+    """String forward references have no origin and can't be checked."""
+    assert _matches("anything", "SomeUndefinedClass") is True
+
+
+def test_is_checkable_forward_ref_annotation_is_false() -> None:
+    """A string forward reference is not a type, so it is not checkable."""
+    assert _is_checkable("SomeUndefinedClass") is False
+
+
+def test_is_checkable_exotic_generic_alias_is_false() -> None:
+    """A generic alias whose origin is not a type is not checkable."""
+    # ClassVar[int] has origin ClassVar, which is a _SpecialForm, not a type.
+    assert _is_checkable(ClassVar[int]) is False

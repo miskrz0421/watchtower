@@ -10,6 +10,7 @@ from typing import (
     Annotated,
     Any,
     Literal,
+    Protocol,
     TypeVar,
     cast,
     get_args,
@@ -186,23 +187,47 @@ def _strip_annotated(annotation: object) -> object:
     return annotation
 
 
+def _is_protocol_subclass(annotation: object) -> bool:
+    """Return whether ``annotation`` is a ``Protocol`` subclass (not ``Protocol`` itself)."""
+    if not isinstance(annotation, type) or annotation is Protocol:
+        return False
+    try:
+        return issubclass(annotation, Protocol)
+    except TypeError:
+        return False
+
+
+def _is_runtime_checkable_protocol(annotation: type) -> bool:
+    """Return whether ``annotation`` is a ``@runtime_checkable`` Protocol."""
+    return bool(getattr(annotation, "_is_runtime_protocol", False))
+
+
 def _is_checkable(annotation: object) -> bool:
     """Return whether ``annotation`` can be validated with ``isinstance``.
 
-    Plain classes (including ``NoneType``) and runtime-checkable Protocols are
-    checkable. ``Any``, non-checkable Protocols, ``typing.TextIO`` and similar
-    are not, so callers that use them are skipped rather than rejected.
+    Plain classes (including ``NoneType``) and ``@runtime_checkable`` Protocols
+    are checkable. ``Any``, non-``@runtime_checkable`` Protocols,
+    ``typing.TextIO`` and similar are not, so callers that use them are skipped
+    rather than rejected.
     """
     annotation = _strip_annotated(annotation)
     if annotation is Any:
         return False
     origin = get_origin(annotation)
     if origin is None:
-        return isinstance(annotation, type)
+        if not isinstance(annotation, type):
+            return False
+        # Protocol subclasses are only checkable when decorated with
+        # @runtime_checkable; isinstance() raises TypeError otherwise.
+        if _is_protocol_subclass(annotation):
+            return _is_runtime_checkable_protocol(annotation)
+        return True
     if origin is types.UnionType:
         return all(_is_checkable(arg) for arg in get_args(annotation))
-    # Generic alias (list, Sequence, ...): checkable via its origin.
-    return isinstance(origin, type)
+    # Generic alias (list, Sequence, SomeProtocol[int], ...): check via origin.
+    if isinstance(origin, type):
+        return _is_checkable(origin)
+    return False
 
 
 def _matches(value: object, annotation: object) -> bool:
@@ -215,23 +240,28 @@ def _matches(value: object, annotation: object) -> bool:
     if annotation is float and isinstance(value, int) and not isinstance(value, bool):
         return True
 
+    if isinstance(annotation, type):
+        try:
+            return isinstance(value, annotation)
+        except TypeError:
+            # Not runtime-checkable (e.g. a Protocol without @runtime_checkable).
+            return True
+
     origin = get_origin(annotation)
     if origin is None:
-        if isinstance(annotation, type):
-            try:
-                return isinstance(value, annotation)
-            except TypeError:
-                # Not runtime-checkable (e.g. a Protocol without @runtime_checkable).
-                return True
         return True
+
     if origin is types.UnionType:
         return any(_matches(value, arg) for arg in get_args(annotation))
-    # Generic alias: validate the origin only; type arguments are best-effort.
+
+    # Generic alias (list, Sequence, ...): validate the origin only.
     if isinstance(origin, type):
         try:
             return isinstance(value, origin)
         except TypeError:
+            # Not runtime-checkable (e.g. a generic non-@runtime_checkable Protocol).
             return True
+
     return True
 
 
@@ -278,8 +308,6 @@ def _validate_init_args(cls: type[object], *args: object, **kwargs: object) -> N
         hints = {}
 
     for param_name, value in bound.arguments.items():
-        if param_name == "self":
-            continue
         param = sig.parameters.get(param_name)
         expected = hints.get(param_name)
         if expected is None or not _is_checkable(expected):
