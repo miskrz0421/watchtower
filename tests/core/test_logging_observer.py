@@ -13,6 +13,7 @@ from watchtower import (
     ChangeEvent,
     ChangeKind,
     CheckCompleted,
+    ConfigReloaded,
     EventBus,
     FetchFailed,
     WatcherState,
@@ -97,4 +98,16 @@ def test_state_change_is_logged_at_warning_only_when_failing(
 
     assert caplog.record_tuples == [
         ("watchtower.core._logging_observer", level, f"'Flats' is now {new_state} (was active)")
+    ]
+
+
+def test_reload_is_logged_with_the_number_of_watchers(
+    bus: EventBus, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Test that a reload is logged at info."""
+    with caplog.at_level(logging.INFO):
+        bus.publish(ConfigReloaded(statuses=()))
+
+    assert caplog.record_tuples == [
+        ("watchtower.core._logging_observer", logging.INFO, "Config reloaded: 0 watcher(s)")
     ]

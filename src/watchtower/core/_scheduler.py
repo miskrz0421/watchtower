@@ -5,10 +5,11 @@ from __future__ import annotations
 import logging
 import queue
 import threading
+from collections.abc import Callable, Sequence
 from datetime import datetime, timedelta
 
 from watchtower._errors import WatchtowerError
-from watchtower._events import WatcherStateChanged
+from watchtower._events import ConfigReloaded, EventBus, WatcherStateChanged
 from watchtower.core._clock import Clock, SystemClock
 from watchtower.core._commands import CheckNow, Command, Pause, ReloadConfig, Resume
 from watchtower.core._states import Active, Backoff, Paused, State, WatcherStatus
@@ -20,13 +21,23 @@ _logger = logging.getLogger(__name__)
 class Scheduler:
     """Runs watchers one check at a time, when their states say they are due (ADR-007, ADR-023)."""
 
-    def __init__(self, clock: Clock | None = None) -> None:
+    def __init__(
+        self,
+        clock: Clock | None = None,
+        load_watchers: Callable[[], Sequence[Watcher]] | None = None,
+        event_bus: EventBus | None = None,
+    ) -> None:
         """Initialize Scheduler.
 
         Args:
             clock: Source of time; None means the real SystemClock.
+            load_watchers: Returns new watchers, each with its own name, for a
+                ReloadConfig command; None means the watchers cannot be reloaded.
+            event_bus: Bus to publish ConfigReloaded on, if any.
         """
         self._clock: Clock = clock if clock is not None else SystemClock()
+        self._load_watchers = load_watchers
+        self._event_bus = event_bus
         self._watchers: dict[str, Watcher] = {}
         self._states: dict[str, State] = {}
         self._due: dict[str, datetime] = {}
@@ -105,7 +116,7 @@ class Scheduler:
 
     def run_forever(self) -> None:
         """Check due watchers and wait for the next until `stop`, even one sent before the start."""
-        while self._watchers and not self._stop_requested:
+        while self._can_have_work() and not self._stop_requested:
             self.run_pending()
             self._clock.wait(self._seconds_until_next_due(), self._wake)
             self._wake.clear()
@@ -129,7 +140,7 @@ class Scheduler:
         """
         match command:
             case ReloadConfig():
-                raise NotImplementedError
+                self._reload()
             case _ if command.watcher_name not in self._watchers:
                 _logger.warning("Ignoring %r: no watcher has that name", command)
             case Pause(watcher_name=name):
@@ -140,6 +151,37 @@ class Scheduler:
                 self._schedule(name, timedelta(0))
             case CheckNow(watcher_name=name):
                 self._schedule(name, timedelta(0))
+
+    def _reload(self) -> None:
+        """Replace the watchers with newly loaded ones; if loading fails, keep the old ones."""
+        if self._load_watchers is None:
+            _logger.warning("Ignoring ReloadConfig: the watchers were not loaded from a config")
+            return
+        try:
+            watchers = self._load_watchers()
+        except WatchtowerError as err:
+            _logger.error("Config not reloaded, the old watchers keep running: %s", err)
+        except Exception:
+            _logger.exception("Unexpected error while reloading the config")
+        else:
+            self._replace_watchers(watchers)
+
+    def _replace_watchers(self, watchers: Sequence[Watcher]) -> None:
+        """Schedule new watchers instead of the old ones and publish ConfigReloaded.
+
+        Args:
+            watchers: Watchers to schedule from now on.
+        """
+        self._watchers.clear()
+        self._states.clear()
+        self._due.clear()
+        self._last_check.clear()
+        for watcher in watchers:
+            self.add(watcher)
+        if self._event_bus is not None:
+            self._event_bus.publish(
+                ConfigReloaded(statuses=tuple(self.statuses()), timestamp=self._clock.now())
+            )
 
     def _check(self, watcher: Watcher) -> None:
         """Run one check, move the watcher to its next state and schedule it.
@@ -212,6 +254,14 @@ class Scheduler:
                     timestamp=self._clock.now(),
                 )
             )
+
+    def _can_have_work(self) -> bool:
+        """Return whether there is a watcher to check, now or after a reload.
+
+        Returns:
+            True if a watcher is scheduled or a ReloadConfig may bring some.
+        """
+        return bool(self._watchers) or self._load_watchers is not None
 
     def _seconds_until_next_due(self) -> float | None:
         """Return how long to wait before the earliest due check.
