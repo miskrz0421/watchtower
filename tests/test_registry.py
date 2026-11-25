@@ -2,24 +2,17 @@
 
 from __future__ import annotations
 
+import io
 from collections.abc import Iterable
-from typing import (
-    Annotated,
-    Any,
-    ClassVar,
-    Generic,
-    Literal,
-    Protocol,
-    TypeVar,
-    cast,
-    runtime_checkable,
-)
-from unittest import mock
+from pathlib import Path
+from types import UnionType
+from typing import cast
 
 import pytest
 
 from watchtower import (
     ChangeEvent,
+    ChangeKind,
     create,
     create_differ,
     create_filter,
@@ -32,15 +25,7 @@ from watchtower import (
     register_source,
 )
 from watchtower._models import Change, Item, Snapshot
-from watchtower._registry import (
-    _base_class_for,
-    _is_checkable,
-    _is_protocol_subclass,
-    _Kind,
-    _matches,
-    _strip_annotated,
-    _validate_init_args,
-)
+from watchtower._registry import _accepts, _base_class_for, _check_arguments, _Kind
 from watchtower.diffs import ItemDiff, TextDiff
 from watchtower.diffs._base import Differ
 from watchtower.filters import (
@@ -69,7 +54,7 @@ from watchtower.sources._base import Source
 
 
 class _FakeBackend:
-    """Minimal runtime-checkable ``_NotificationBackend`` stand-in for tests."""
+    """Minimal ``_NotificationBackend`` stand-in for tests."""
 
     def send(self, title: str, message: str) -> str:
         return "id"
@@ -282,197 +267,69 @@ def test_filter_positional_argument_still_works() -> None:
     assert filt.limit == 3000
 
 
-def test_desktop_notifier_accepts_runtime_checkable_backend() -> None:
-    """A runtime-checkable Protocol backend passes argument validation."""
-
-    class FakeBackend:
-        def send(self, title: str, message: str) -> str:
-            return "id"
-
-    notifier = create_notifier("desktop", backend=FakeBackend())
-    assert isinstance(notifier, DesktopNotifier)
-
-
 def test_base_class_for_unknown_kind_raises() -> None:
     """An invalid kind raises ValueError even though it's unreachable via the Literal."""
     with pytest.raises(ValueError, match="Unknown plugin kind"):
         _base_class_for(cast(_Kind, "bogus"))
 
 
-def test_strip_annotated_unwraps_annotated() -> None:
-    """_strip_annotated returns the underlying type of Annotated."""
-    assert _strip_annotated(Annotated[int, "metadata"]) is int
+def test_wrong_argument_error_does_not_show_the_value() -> None:
+    """A wrong argument's value stays out of the error, because it may be a secret."""
+    with pytest.raises(TypeError, match="argument 'webhook_url' must be str, got list") as error:
+        create_notifier("discord", webhook_url=["http://test/secret"])
+    assert "secret" not in str(error.value)
 
 
-def test_is_checkable_any_is_false() -> None:
-    """Any is not checkable with isinstance."""
-    assert _is_checkable(Any) is False
+def test_arguments_of_other_types_are_not_checked() -> None:
+    """Arguments without a simple annotation, such as streams, are passed on unchecked."""
+    assert isinstance(create_notifier("console", stream=io.StringIO()), ConsoleNotifier)
 
 
-def test_is_checkable_protocol_subclass_without_runtime_checkable() -> None:
-    """A Protocol without @runtime_checkable is not checkable."""
-
-    class _Proto(Protocol):
-        def method(self) -> int: ...
-
-    assert _is_protocol_subclass(_Proto) is True
-    assert _is_checkable(_Proto) is False
-
-
-def test_is_checkable_runtime_checkable_protocol() -> None:
-    """A @runtime_checkable Protocol is checkable."""
-
-    @runtime_checkable
-    class _Proto(Protocol):
-        def method(self) -> int: ...
-
-    assert _is_protocol_subclass(_Proto) is True
-    assert _is_checkable(_Proto) is True
-
-
-def test_is_checkable_protocol_itself_is_not_a_subclass() -> None:
-    """Protocol itself is not treated as a Protocol subclass."""
-    assert _is_protocol_subclass(Protocol) is False
+@pytest.mark.parametrize(
+    ("annotation", "value", "expected"),
+    [
+        (float, 3000, True),
+        (float, 2999.99, True),
+        (float, True, False),
+        (float, "3000", False),
+        (int, True, False),
+        (bool, True, True),
+        (str, ChangeKind.NEW, True),
+        (str | None, None, True),
+        (str | None, 1, False),
+        (str | Path, Path("page.html"), True),
+        (str | Path, 1, False),
+        (list[str], 1, True),
+    ],
+)
+def test_accepts(annotation: type | UnionType, value: object, expected: bool) -> None:
+    """Simple annotations are checked, other annotations accept everything."""
+    assert _accepts(annotation, value) is expected
 
 
-def test_is_checkable_generic_protocol() -> None:
-    """Generic parameterized Protocols are checkable only when @runtime_checkable."""
-    T = TypeVar("T")
-
-    class _GenNonRt(Protocol, Generic[T]):
-        def method(self) -> T: ...
-
-    @runtime_checkable
-    class _GenRt(Protocol, Generic[T]):
-        def method(self) -> T: ...
-
-    assert _is_protocol_subclass(_GenNonRt[int]) is True
-    assert _is_protocol_subclass(_GenRt[int]) is True
-
-    assert _is_checkable(_GenNonRt[int]) is False
-    assert _is_checkable(_GenRt[int]) is True
-
-
-def test_matches_runtime_checkable_protocol() -> None:
-    """A @runtime_checkable Protocol accepts conforming values and rejects others."""
-
-    @runtime_checkable
-    class _Proto(Protocol):
-        def method(self) -> int: ...
-
-    class _Impl:
-        def method(self) -> int:
-            return 1
-
-    assert _matches(_Impl(), _Proto) is True
-    assert _matches(object(), _Proto) is False
-
-
-def test_matches_non_checkable_protocol_returns_true() -> None:
-    """A Protocol without @runtime_checkable makes isinstance raise TypeError -> True."""
-
-    class _Proto(Protocol):
-        def method(self) -> int: ...
-
-    assert _matches(object(), _Proto) is True
-
-
-def test_matches_generic_non_checkable_protocol_returns_true() -> None:
-    """A generic Parameterized non-@runtime_checkable Protocol is skipped."""
-    T = TypeVar("T")
-
-    class _GenProto(Protocol, Generic[T]):
-        def method(self) -> T: ...
-
-    assert _matches(object(), _GenProto[int]) is True
-
-
-def test_validate_init_args_signature_error() -> None:
-    """A class whose __init__ has no inspectable signature is skipped."""
-
-    class _NoSignature:
-        __init__ = int  # type: ignore[method-assign]
-
-    _validate_init_args(_NoSignature)
-
-
-def test_validate_init_args_get_type_hints_error() -> None:
-    """A class with an unresolvable annotation is skipped."""
+def test_unresolvable_annotation_is_not_checked() -> None:
+    """A constructor annotated with a name unknown at runtime is checked only for arity."""
 
     class _Unresolvable:
         def __init__(self, value: NotDefinedAnywhere) -> None:  # noqa: F821
             self.value = value
 
-    _validate_init_args(_Unresolvable, "anything")
+    _check_arguments(_Unresolvable, "anything")
+    with pytest.raises(TypeError, match="value"):
+        _check_arguments(_Unresolvable)
 
 
-def test_validate_init_args_var_positional_error() -> None:
-    """Invalid element in *args: T raises TypeError."""
+def test_variadic_arguments_are_not_checked() -> None:
+    """Values collected by *args and **kwargs are not compared with the annotation."""
 
-    class _VarPos:
-        def __init__(self, *items: int) -> None:
+    class _Variadic:
+        def __init__(self, *items: int, **options: str) -> None:
             self.items = items
+            self.options = options
 
-    with pytest.raises(TypeError, match="items"):
-        _validate_init_args(_VarPos, 1, 2, "not-an-int")
-
-
-def test_validate_init_args_var_keyword_error() -> None:
-    """Invalid value in **kwargs: T raises TypeError."""
-
-    class _VarKw:
-        def __init__(self, **values: int) -> None:
-            self.values = values
-
-    with pytest.raises(TypeError, match="values"):
-        _validate_init_args(_VarKw, a=1, b="not-an-int")
+    _check_arguments(_Variadic, 1, 2, color="red")
 
 
 def test_list_plugins_unknown_kind() -> None:
     """An unknown kind returns an empty list for that kind."""
     assert list_plugins("bogus") == {"bogus": []}
-
-
-def test_matches_literal_annotation_returns_true() -> None:
-    """Exotic annotations (Literal, ClassVar, ...) that can't be checked are skipped."""
-    assert _matches("anything", Literal["a", "b"]) is True
-    assert _matches(42, Literal["a", "b"]) is True
-
-
-def test_matches_forward_ref_annotation_returns_true() -> None:
-    """String forward references have no origin and can't be checked."""
-    assert _matches("anything", "SomeUndefinedClass") is True
-
-
-def test_is_checkable_forward_ref_annotation_is_false() -> None:
-    """A string forward reference is not a type, so it is not checkable."""
-    assert _is_checkable("SomeUndefinedClass") is False
-
-
-def test_is_checkable_exotic_generic_alias_is_false() -> None:
-    """A generic alias whose origin is not a type is not checkable."""
-    # ClassVar[int] has origin ClassVar, which is a _SpecialForm, not a type.
-    assert _is_checkable(ClassVar[int]) is False
-
-
-def test_is_protocol_subclass_issubclass_type_error() -> None:
-    """Issubclass raising TypeError in _is_protocol_subclass is handled gracefully."""
-    with mock.patch("watchtower._registry.issubclass", side_effect=TypeError):
-        assert _is_protocol_subclass(int) is False
-
-
-def test_is_protocol_subclass_generic_issubclass_type_error() -> None:
-    """Issubclass raising TypeError on a generic alias origin is handled gracefully."""
-    T = TypeVar("T")
-
-    class _GenProto(Protocol, Generic[T]):
-        def method(self) -> T: ...
-
-    with mock.patch("watchtower._registry.issubclass", side_effect=TypeError):
-        assert _is_protocol_subclass(_GenProto[int]) is False
-
-
-def test_is_protocol_subclass_non_type_returns_false() -> None:
-    """Non-type annotations (forward refs, ClassVar, ...) are not Protocol subclasses."""
-    assert _is_protocol_subclass("SomeUndefinedClass") is False
-    assert _is_protocol_subclass(ClassVar[int]) is False

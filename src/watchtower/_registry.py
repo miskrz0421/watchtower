@@ -3,20 +3,10 @@
 from __future__ import annotations
 
 import inspect
-import types
 from collections.abc import Callable
-from typing import (
-    TYPE_CHECKING,
-    Annotated,
-    Any,
-    Literal,
-    Protocol,
-    TypeVar,
-    cast,
-    get_args,
-    get_origin,
-    get_type_hints,
-)
+from pathlib import Path
+from types import NoneType, UnionType
+from typing import TYPE_CHECKING, Any, Literal, TypeVar, cast, get_args, get_type_hints
 
 if TYPE_CHECKING:
     from watchtower.diffs._base import Differ
@@ -28,12 +18,12 @@ _T = TypeVar("_T")
 
 type _Kind = Literal["source", "differ", "filter", "notifier"]
 
-# Plugin constructor arguments cannot be statically narrowed: every plugin
-# class has its own constructor signature, and the class is resolved by name
-# at runtime. Arguments are validated against the resolved class's annotations
-# at creation time, so ``Any`` is the correct (and only safe) static type here.
-# Named for documentation clarity rather than for narrowing.
+# Every plugin class has its own constructor, known only at runtime.
 type _PluginArg = Any
+
+# Types a config value can have; arguments of other types are not checked.
+_SIMPLE_TYPES = frozenset({str, int, float, bool, NoneType, Path})
+_VARIADIC_KINDS = (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD)
 
 # Per-kind registries storing plugin classes keyed by name.
 _SOURCES: dict[str, type[Source]] = {}
@@ -180,173 +170,52 @@ def _lookup[T](registry: dict[str, type[T]], kind: str, name: str) -> type[T]:
     return registry[name]
 
 
-def _strip_annotated(annotation: object) -> object:
-    """Unwrap ``typing.Annotated`` to its underlying type."""
-    if get_origin(annotation) is Annotated:
-        return get_args(annotation)[0]
-    return annotation
-
-
-def _is_protocol_subclass(annotation: object) -> bool:
-    """Return whether ``annotation`` is a ``Protocol`` subclass (not ``Protocol`` itself)."""
-    if annotation is Protocol:
-        return False
-    if isinstance(annotation, type):
-        try:
-            return issubclass(annotation, Protocol)
-        except TypeError:
-            return False
-    # GenericAlias (e.g. SomeProtocol[int]): check its origin.
-    origin = get_origin(annotation)
-    if origin is not None and isinstance(origin, type):
-        try:
-            return issubclass(origin, Protocol)
-        except TypeError:
-            return False
-    return False
-
-
-def _is_runtime_checkable_protocol(annotation: type) -> bool:
-    """Return whether ``annotation`` is a ``@runtime_checkable`` Protocol."""
-    return bool(getattr(annotation, "_is_runtime_protocol", False))
-
-
-def _is_checkable(annotation: object) -> bool:
-    """Return whether ``annotation`` can be validated with ``isinstance``.
-
-    Plain classes (including ``NoneType``) and ``@runtime_checkable`` Protocols
-    are checkable. ``Any``, non-``@runtime_checkable`` Protocols,
-    ``typing.TextIO`` and similar are not, so callers that use them are skipped
-    rather than rejected.
-    """
-    annotation = _strip_annotated(annotation)
-    if annotation is Any:
-        return False
-    origin = get_origin(annotation)
-    if origin is None:
-        if not isinstance(annotation, type):
-            return False
-        # Protocol subclasses are only checkable when decorated with
-        # @runtime_checkable; isinstance() raises TypeError otherwise.
-        if _is_protocol_subclass(annotation):
-            return _is_runtime_checkable_protocol(annotation)
-        return True
-    if origin is types.UnionType:
-        return all(_is_checkable(arg) for arg in get_args(annotation))
-    # Generic alias (list, Sequence, SomeProtocol[int], ...): check via origin.
-    if isinstance(origin, type):
-        return _is_checkable(origin)
-    return False
-
-
-def _matches(value: object, annotation: object) -> bool:
-    """Return whether ``value`` satisfies ``annotation``."""
-    annotation = _strip_annotated(annotation)
-
-    # Numeric widening: accept ``int`` where ``float`` is expected. YAML parses
-    # bare numbers as ``int`` (e.g. ``price_below: 2500``), and ``isinstance``
-    # would otherwise reject a perfectly valid configuration value.
-    if annotation is float and isinstance(value, int) and not isinstance(value, bool):
-        return True
-
-    if isinstance(annotation, type):
-        try:
-            return isinstance(value, annotation)
-        except TypeError:
-            # Not runtime-checkable (e.g. a Protocol without @runtime_checkable).
-            return True
-
-    origin = get_origin(annotation)
-    if origin is None:
-        return True
-
-    if origin is types.UnionType:
-        return any(_matches(value, arg) for arg in get_args(annotation))
-
-    # Generic alias (list, Sequence, ...): validate the origin only.
-    if isinstance(origin, type):
-        try:
-            return isinstance(value, origin)
-        except TypeError:
-            # Not runtime-checkable (e.g. a generic non-@runtime_checkable Protocol).
-            return True
-
-    return True
-
-
-def _validate_init_args(cls: type[object], *args: object, **kwargs: object) -> None:
-    """Validate constructor arguments against their type annotations.
-
-    Positional and keyword arguments are bound to ``cls.__init__``'s signature
-    (catching arity errors) and each value is checked against its annotation.
-    Annotations that cannot be checked at runtime are skipped so that valid
-    calls are never rejected with false positives.
+def _accepts(annotation: type | UnionType, value: object) -> bool:
+    """Return whether a constructor argument fits a simple annotation.
 
     Args:
-        cls: The class whose constructor is being called.
-        *args: Positional arguments passed to the constructor.
-        **kwargs: Keyword arguments passed to the constructor.
+        annotation: Resolved annotation of the constructor parameter.
+        value: Argument passed for the parameter.
+
+    Returns:
+        True if the value fits, or if the annotation has a type that is not simple.
+    """
+    options = get_args(annotation) if isinstance(annotation, UnionType) else (annotation,)
+    if not _SIMPLE_TYPES.issuperset(options):
+        return True
+    if isinstance(value, bool):
+        return bool in options
+    if isinstance(value, int) and float in options:
+        return True
+    return isinstance(value, annotation)
+
+
+def _check_arguments(cls: type[object], *args: object, **params: object) -> None:
+    """Check arguments against the signature and simple annotations of a constructor.
+
+    Args:
+        cls: Plugin class to be created.
+        *args: Positional constructor arguments.
+        **params: Keyword constructor arguments.
 
     Raises:
-        TypeError: If the arguments do not match the constructor's signature
-            or type annotations. The message names the class and the offending
-            argument so callers (such as the config loader) can wrap it.
+        TypeError: If an argument is missing, unexpected or of the wrong type.
     """
-    try:
-        sig = inspect.signature(cls.__init__)
-    except (TypeError, ValueError):
-        return
-
-    # ``__init__``'s first parameter is the implicit instance (``self``); drop it
-    # so we bind only the arguments the caller actually passes.
-    parameters = list(sig.parameters.values())
-    if parameters and parameters[0].name in ("self", "cls"):
-        parameters = parameters[1:]
-        sig = sig.replace(parameters=parameters)
-
-    try:
-        bound = sig.bind(*args, **kwargs)
-    except TypeError as err:
-        msg = f"{cls.__name__}(): {err}"
-        raise TypeError(msg) from err
-
-    bound.apply_defaults()
+    signature = inspect.signature(cls)
+    bound = signature.bind(*args, **params)
     try:
         hints = get_type_hints(cls.__init__)
-    except Exception:
-        hints = {}
-
-    for param_name, value in bound.arguments.items():
-        param = sig.parameters.get(param_name)
-        expected = hints.get(param_name)
-        if expected is None or not _is_checkable(expected):
+    except NameError:
+        # An annotation is imported only for type checkers, so it cannot be resolved.
+        return
+    for name, value in bound.arguments.items():
+        if name not in hints or signature.parameters[name].kind in _VARIADIC_KINDS:
             continue
-
-        if param is not None and param.kind is inspect.Parameter.VAR_POSITIONAL:
-            # *args: T  -> validate every element against T.
-            for index, item in enumerate(value):
-                if not _matches(item, expected):
-                    msg = (
-                        f"{cls.__name__}.__init__: argument {param_name!r}[{index}] must be "
-                        f"{repr(expected)}, got {item!r}"
-                    )
-                    raise TypeError(msg)
-        elif param is not None and param.kind is inspect.Parameter.VAR_KEYWORD:
-            # **kwargs: T -> validate every value against T.
-            for key, item in value.items():
-                if not _matches(item, expected):
-                    msg = (
-                        f"{cls.__name__}.__init__: argument {param_name!r}[{key!r}] must be "
-                        f"{repr(expected)}, got {item!r}"
-                    )
-                    raise TypeError(msg)
-        else:
-            if not _matches(value, expected):
-                msg = (
-                    f"{cls.__name__}.__init__: argument {param_name!r} must be "
-                    f"{repr(expected)}, got {value!r}"
-                )
-                raise TypeError(msg)
+        if not _accepts(hints[name], value):
+            expected = inspect.formatannotation(hints[name])
+            # The value itself may be a secret, so only its type is shown.
+            msg = f"argument {name!r} must be {expected}, got {type(value).__name__}"
+            raise TypeError(msg)
 
 
 def create_source(name: str, **params: _PluginArg) -> Source:
@@ -364,7 +233,7 @@ def create_source(name: str, **params: _PluginArg) -> Source:
         TypeError: If the arguments do not match the source constructor.
     """
     cls = _lookup(_SOURCES, "source", name)
-    _validate_init_args(cls, **params)
+    _check_arguments(cls, **params)
     return cls(**params)
 
 
@@ -383,7 +252,7 @@ def create_differ(name: str, **params: _PluginArg) -> Differ:
         TypeError: If the arguments do not match the differ constructor.
     """
     cls = _lookup(_DIFFERS, "differ", name)
-    _validate_init_args(cls, **params)
+    _check_arguments(cls, **params)
     return cls(**params)
 
 
@@ -404,7 +273,7 @@ def create_filter(name: str, *args: _PluginArg, **params: _PluginArg) -> Filter:
         TypeError: If the arguments do not match the filter constructor.
     """
     cls = _lookup(_FILTERS, "filter", name)
-    _validate_init_args(cls, *args, **params)
+    _check_arguments(cls, *args, **params)
     return cls(*args, **params)
 
 
@@ -423,7 +292,7 @@ def create_notifier(name: str, **params: _PluginArg) -> Notifier:
         TypeError: If the arguments do not match the notifier constructor.
     """
     cls = _lookup(_NOTIFIERS, "notifier", name)
-    _validate_init_args(cls, **params)
+    _check_arguments(cls, **params)
     return cls(**params)
 
 
