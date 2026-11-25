@@ -189,12 +189,21 @@ def _strip_annotated(annotation: object) -> object:
 
 def _is_protocol_subclass(annotation: object) -> bool:
     """Return whether ``annotation`` is a ``Protocol`` subclass (not ``Protocol`` itself)."""
-    if not isinstance(annotation, type) or annotation is Protocol:
+    if annotation is Protocol:
         return False
-    try:
-        return issubclass(annotation, Protocol)
-    except TypeError:
-        return False
+    if isinstance(annotation, type):
+        try:
+            return issubclass(annotation, Protocol)
+        except TypeError:
+            return False
+    # GenericAlias (e.g. SomeProtocol[int]): check its origin.
+    origin = get_origin(annotation)
+    if origin is not None and isinstance(origin, type):
+        try:
+            return issubclass(origin, Protocol)
+        except TypeError:
+            return False
+    return False
 
 
 def _is_runtime_checkable_protocol(annotation: type) -> bool:

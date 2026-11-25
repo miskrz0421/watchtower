@@ -14,6 +14,7 @@ from typing import (
     cast,
     runtime_checkable,
 )
+from unittest import mock
 
 import pytest
 
@@ -345,6 +346,9 @@ def test_is_checkable_generic_protocol() -> None:
     class _GenRt(Protocol, Generic[T]):
         def method(self) -> T: ...
 
+    assert _is_protocol_subclass(_GenNonRt[int]) is True
+    assert _is_protocol_subclass(_GenRt[int]) is True
+
     assert _is_checkable(_GenNonRt[int]) is False
     assert _is_checkable(_GenRt[int]) is True
 
@@ -449,3 +453,26 @@ def test_is_checkable_exotic_generic_alias_is_false() -> None:
     """A generic alias whose origin is not a type is not checkable."""
     # ClassVar[int] has origin ClassVar, which is a _SpecialForm, not a type.
     assert _is_checkable(ClassVar[int]) is False
+
+
+def test_is_protocol_subclass_issubclass_type_error() -> None:
+    """Issubclass raising TypeError in _is_protocol_subclass is handled gracefully."""
+    with mock.patch("watchtower._registry.issubclass", side_effect=TypeError):
+        assert _is_protocol_subclass(int) is False
+
+
+def test_is_protocol_subclass_generic_issubclass_type_error() -> None:
+    """Issubclass raising TypeError on a generic alias origin is handled gracefully."""
+    T = TypeVar("T")
+
+    class _GenProto(Protocol, Generic[T]):
+        def method(self) -> T: ...
+
+    with mock.patch("watchtower._registry.issubclass", side_effect=TypeError):
+        assert _is_protocol_subclass(_GenProto[int]) is False
+
+
+def test_is_protocol_subclass_non_type_returns_false() -> None:
+    """Non-type annotations (forward refs, ClassVar, ...) are not Protocol subclasses."""
+    assert _is_protocol_subclass("SomeUndefinedClass") is False
+    assert _is_protocol_subclass(ClassVar[int]) is False
