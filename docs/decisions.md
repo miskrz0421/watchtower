@@ -25,6 +25,9 @@ PR that makes the decision.
   Changes, Reports, Log tabs) and pandas reports. Move the LLM plugin, asyncio, processors,
   plugin discovery through package entry points, the GUI watcher editor and PyInstaller to
   stretch goals.
+- Note (M6): also left out for good: processors, the LLM plugin, `asyncio`, entry-point plugins, the
+  config editor, PyInstaller, the daily digest, robots.txt, the "use the cached snapshot" step of
+  the error chain, and the hash-only and numeric diffs.
 - Alternatives: everything (not doable); no GUI (loses the most visible part).
 - Consequences: every milestone has a visible demo.
 
@@ -237,6 +240,11 @@ PR that makes the decision.
   - Note (M5): CI runs `just check` on Ubuntu and Windows (`fail-fast: false`, so one failing
     system does not hide the other's result). The app is meant for both, and the GUI tests run on
     both with Qt's offscreen platform.
+  - Note (M6): config files are grouped by topic, with a heading per group: `pyproject.toml`
+    (project, optional dependencies, build, then one section per kind of tool), the `justfile`
+    (`[group]`, which `just` shows), `.gitignore`, the CI steps and `examples/config.yaml`. The
+    `dev` dependencies are split into `test`, `lint`, `types` and `extras`; `extras` refers to the
+    project's own extras, so each version is written once.
 - Alternatives: a Makefile (needs tabs, awkward on Windows, built for files rather than
   commands); only `uv run ...` lines in the README (nothing keeps them up to date); a Python
   task runner such as poethepoet (one more dependency inside the project, less known); a 100%
@@ -485,3 +493,45 @@ PR that makes the decision.
 - Consequences: text watcher changes preserve unified diffs in the history; `ChangeRecord` carries
   `diff_text` for the GUI Changes tab and reporting. Any existing development database (such as
   `examples/watchtower.db`) should be deleted after upgrading if `no column named diff_text` appears.
+
+## ADR-026: Notifier decorators in the config
+- Status: accepted · M6
+- Context: `RateLimited` and `QuietHours` wrap another notifier, so they do not fit the config's
+  "one mapping, one plugin" rule for `notify` entries (ADR-017).
+- Decision:
+  - Two optional keys of any `notify` entry: `rate_limit: 10` (events per hour) and
+    `quiet_hours: [23, 7]` (local hours, from and to). The loader takes them out, creates the
+    notifier from the rest and wraps it. Plugins therefore cannot use these two names for their own
+    parameters.
+  - With both keys, the result is `QuietHours(RateLimited(notifier))`: an event dropped in the
+    quiet hours does not use up the limit.
+  - A dropped event is logged at INFO and not sent later. It stays in the history, because the
+    `HistoryRecorder` listens on the bus and not to the notifiers (ADR-006).
+  - The decorators are notifiers but not in the registry: they need a notifier, not only YAML values.
+- Alternatives: nested entries (`type: rate_limited, notifier: {...}`: three levels of YAML for one
+  number); keys of the whole watcher (a user may want a quiet Discord but a full console).
+- Consequences: a new decorator needs a new key in the loader.
+
+## ADR-027: Charts are matplotlib figures used by both the CLI and the GUI
+- Status: accepted · M6
+- Context: `watchtower report` writes PNG files and the Reports tab shows the same charts.
+- Decision: `reports/_tables.py` computes pandas tables, and `reports/_charts.py` returns one
+  `matplotlib.figure.Figure` per chart. `save_charts` saves those figures and the Reports tab puts
+  them in a `FigureCanvasQTAgg`. Figures are created directly, never through `pyplot`. The `gui` extra
+  includes the `reports` extra.
+- Alternatives: `pyplot` (a global list of open figures, and it picks a GUI backend by itself);
+  drawing in the tab and again in the CLI (two versions of each chart); importing matplotlib only
+  when the Reports tab opens (one more error path, to save one install).
+- Consequences: charts are tested without Qt. The headless install stays without pandas and matplotlib.
+
+## ADR-028: Reloading the config replaces the watchers
+- Status: accepted · M6
+- Context: `ReloadConfig` (ADR-023) runs in the engine thread, and the tabs and the tray show the old
+  watchers until somebody tells them.
+- Decision: after a reload the scheduler publishes `ConfigReloaded` with the `WatcherStatus` of every
+  new watcher, and the bridge re-emits it as `config_reloaded`. The event carries the statuses, so
+  the GUI never calls `Scheduler.statuses()` while the engine runs. If the new file is
+  invalid, the error is logged, the old watchers keep running and the event is not published.
+- Alternatives: the GUI reads `statuses()` after the event (two threads using the same
+  dictionaries); one event per added and removed watcher (the tabs would have to merge them).
+- Consequences: the Watchers tab and the tray replace all their rows on one signal.

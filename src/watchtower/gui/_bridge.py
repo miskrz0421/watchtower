@@ -7,6 +7,7 @@ from PySide6.QtCore import QObject, Signal
 from watchtower._events import (
     ChangeDetected,
     CheckCompleted,
+    ConfigReloaded,
     EventBus,
     FetchFailed,
     WatcherStateChanged,
@@ -25,6 +26,7 @@ class EngineBridge(QObject):
     change_detected = Signal(ChangeDetected)
     fetch_failed = Signal(FetchFailed)
     state_changed = Signal(WatcherStateChanged)
+    config_reloaded = Signal(ConfigReloaded)
 
     def attach(self, event_bus: EventBus) -> None:
         """Start re-emitting the events published on a bus.
@@ -36,3 +38,4 @@ class EngineBridge(QObject):
         event_bus.subscribe(ChangeDetected, self.change_detected.emit)
         event_bus.subscribe(FetchFailed, self.fetch_failed.emit)
         event_bus.subscribe(WatcherStateChanged, self.state_changed.emit)
+        event_bus.subscribe(ConfigReloaded, self.config_reloaded.emit)

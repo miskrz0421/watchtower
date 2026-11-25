@@ -26,19 +26,24 @@ history and reports) or **headless** from the command line.
 Requirements: Python 3.12+, [uv](https://docs.astral.sh/uv/) and
 [just](https://just.systems) (`uv tool install rust-just`).
 
-Every developer command is a recipe in the [`justfile`](justfile); `just` alone lists them:
+Every developer command is a recipe in the [`justfile`](justfile); `just` alone lists them by group:
 
 ```bash
+# setup
 just install               # uv sync: the project + dev tools (incl. PySide6, pandas, matplotlib)
+just clean                 # remove tool caches, coverage data and bytecode
+# test
 just test                  # the tests; `just test tests/test_cli.py` runs one file
-just lint                  # report lint problems
+just coverage              # the tests with an HTML coverage report
+# code quality
 just format                # fix formatting and auto-fixable lint problems
+just lint                  # report lint problems
 just typecheck             # mypy
 just check                 # everything CI runs, tests with coverage (fails below 95%)
-just clean                 # remove tool caches, coverage data and bytecode
-just serve                 # fake listings website for demos
-just gui                   # the tray app on examples/config.yaml
+# run
 just watchtower plugins    # the app; arguments are passed on
+just gui                   # the tray app on examples/config.yaml
+just serve                 # fake listings website for demos
 ```
 
 The dev tools already include the `gui`, `reports` and `desktop` extras;

@@ -10,6 +10,7 @@ database: watchtower.db
 
 watchers:
   - name: Cheap flats without agencies
+    # what to watch and how often
     source:
       type: webpage
       url: "http://127.0.0.1:8000/listings"
@@ -18,11 +19,13 @@ watchers:
       price_selector: ".price"
       key_attribute: "data-id"
     interval: 30s
+    # which changes matter; a change must pass all the filters
     diff: { type: items }
-    filters:                       # a change must pass all of them
+    filters:
       - new_items
       - price_below: 3000
       - not: { text_contains: agency }
+    # who is told
     notify:
       - { type: console }
 
