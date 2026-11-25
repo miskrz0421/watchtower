@@ -581,6 +581,17 @@ def test_missing_optional_dependency_is_config_error(
                     source: { type: fake }
                     diff: { type: text }
                     filters:
+                      - { price_below: .nan }
+                """),
+            "Watcher 'W' key 'filters': filter 'price_below'",
+        ),
+        (
+            dedent("""
+                watchers:
+                  - name: W
+                    source: { type: fake }
+                    diff: { type: text }
+                    filters:
                       - { text_contains: 123 }
                 """),
             "Watcher 'W' key 'filters': filter 'text_contains'",
