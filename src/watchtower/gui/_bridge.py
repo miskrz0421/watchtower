@@ -1,4 +1,4 @@
-"""EngineBridge turning bus events into Qt signals (Observer pattern)."""
+"""EngineBridge turning bus events and log lines into Qt signals (Observer pattern)."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ from watchtower._events import (
 
 
 class EngineBridge(QObject):
-    """Re-emits the engine's bus events as Qt signals (see ADR-024).
+    """Re-emits the engine's bus events and log lines as Qt signals (see ADR-024, ADR-032).
 
     The bridge is created in the GUI thread and the engine publishes from its
     own thread. Qt then queues each signal to the thread of the QObject whose
@@ -27,6 +27,7 @@ class EngineBridge(QObject):
     fetch_failed = Signal(FetchFailed)
     state_changed = Signal(WatcherStateChanged)
     config_reloaded = Signal(ConfigReloaded)
+    line_logged = Signal(str)
 
     def attach(self, event_bus: EventBus) -> None:
         """Start re-emitting the events published on a bus.

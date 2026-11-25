@@ -535,6 +535,38 @@ PR that makes the decision.
 - Alternatives: the GUI reads `statuses()` after the event (two threads using the same
   dictionaries); one event per added and removed watcher (the tabs would have to merge them).
 - Consequences: the Watchers tab and the tray replace all their rows on one signal.
+- Note (M6, reload PR): a reload is a restart of the watchers without closing the app.
+  - The scheduler gets `load_watchers`, a function that returns new watchers, and calls it in its own
+    thread. It does not know about YAML; the CLI makes the function from the config path. Every
+    watcher is built before the first one is replaced, so any error leaves the old ones untouched.
+  - Every new watcher starts as Active and is checked at once, also one that was Paused or Disabled.
+    Keeping the old state by name would need rules for a watcher whose source was changed in the file.
+  - The database stays the one the app was started with, because the `HistoryRecorder` and the GUI
+    already use it. A file that names another one is rejected like an invalid file. With a database
+    the new watchers continue from the saved snapshots; without one their first check is a baseline.
+  - A scheduler that can reload keeps running without watchers, so a file with an empty list can be
+    corrected and reloaded.
+  - *Reload config* is a button of the Watchers tab and an entry of the tray menu; it does not depend
+    on the selected watcher. A failed reload is shown in the log.
+
+## ADR-032: The Log tab shows Watchtower's log through the bridge
+- Status: accepted · M6
+- Context: checks, failures and reloads are logged (ADR-020), but a user of the tray app has no
+  terminal. Lines are logged in the engine thread and must not bring secrets into the window (ADR-010).
+- Decision:
+  - While the app runs, a `LogHandler` on the `watchtower` logger turns each record into a line and
+    emits it as `EngineBridge.line_logged`. Qt queues it to the GUI thread like the other signals
+    (ADR-024), so the engine never touches a widget.
+  - Other libraries are left out. `httpx`, for instance, logs full addresses.
+  - A line has the local time, the level and the message. Of an exception only its type is shown: a
+    traceback may contain the text of an error with a secret. The terminal still has it.
+  - The tab keeps the last 1000 lines and starts empty; the history is in the database, not in the log.
+- Alternatives: the tab as one more observer of the bus (it would repeat the texts of
+  `LoggingObserver` and miss what is only logged, such as a failed notifier); a log file that
+  the tab reads (one more setting, and the tab would have to poll the file); hiding known secrets
+  in the text (the loader would have to keep every substituted value).
+- Consequences: whatever is logged as a message is visible, so messages must not contain secrets. The
+  error text of a source may contain its address, so a secret token in a source URL would be shown.
 
 ## ADR-033: A disabled watcher alerts the user through its own notifiers
 - Status: accepted · M6

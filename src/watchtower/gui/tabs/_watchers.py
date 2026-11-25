@@ -1,4 +1,4 @@
-"""Watchers tab: the state of every watcher, with Pause, Resume and Check now."""
+"""Watchers tab: the state of every watcher, with Pause, Resume, Check now and Reload config."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QHBoxLayout, QPushButton, QTableView, QVBoxLayout, QWidget
 
 from watchtower._events import CheckCompleted, WatcherState, WatcherStateChanged
-from watchtower.core._commands import CheckNow, Pause, Resume
+from watchtower.core._commands import CheckNow, Pause, ReloadConfig, Resume
 from watchtower.core._scheduler import Scheduler
 from watchtower.core._states import WatcherStatus
 from watchtower.gui._bridge import EngineBridge
@@ -267,6 +267,7 @@ class WatchersTab(QWidget):
             ("Pause", self.pause_selected),
             ("Resume", self.resume_selected),
             ("Check now", self.check_now_selected),
+            ("Reload config", self.reload_config),
         ]:
             button = QPushButton(text, self)
             button.clicked.connect(slot)
@@ -293,6 +294,10 @@ class WatchersTab(QWidget):
         name = self._selected_name()
         if name is not None:
             self._scheduler.submit(CheckNow(name))
+
+    def reload_config(self) -> None:
+        """Ask the scheduler to read the config file again."""
+        self._scheduler.submit(ReloadConfig())
 
     def _selected_name(self) -> str | None:
         """Return the name of the selected watcher, if one is selected.

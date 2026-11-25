@@ -14,13 +14,24 @@ from watchtower import (
     ChangeDetected,
     ChangeEvent,
     CheckCompleted,
+    ConfigError,
+    ConfigReloaded,
     EventBus,
     Snapshot,
     SourceError,
     WatcherState,
     WatcherStateChanged,
 )
-from watchtower.core import CheckNow, FakeClock, Pause, Resume, Scheduler, Watcher, WatcherStatus
+from watchtower.core import (
+    CheckNow,
+    FakeClock,
+    Pause,
+    ReloadConfig,
+    Resume,
+    Scheduler,
+    Watcher,
+    WatcherStatus,
+)
 from watchtower.diffs import Differ, TextDiff
 from watchtower.notifiers import Notifier
 from watchtower.sources import FakeSource, Source
@@ -490,6 +501,124 @@ def test_commands_can_be_submitted_from_another_thread(clock: FakeClock, bus: Ev
     sender.join()
 
     assert scheduler.run_pending() == 1
+
+
+def test_reload_replaces_the_watchers(clock: FakeClock, bus: EventBus) -> None:
+    """Test that only the new watchers are scheduled, active and checked in the same run."""
+    checks = _CheckLog(bus)
+    scheduler = Scheduler(clock, lambda: [_watcher("b", 30, bus), _watcher("c", 60, bus)], bus)
+    scheduler.add(_watcher("a", 30, bus))
+    scheduler.add(_watcher("b", 60, bus))
+    scheduler.submit(Pause("b"))
+    scheduler.run_pending()
+
+    scheduler.submit(ReloadConfig())
+
+    assert scheduler.run_pending() == 2
+    assert checks.names == ["a", "b", "c"]
+    assert scheduler.statuses() == [
+        WatcherStatus("b", WatcherState.ACTIVE, timedelta(seconds=30), _START),
+        WatcherStatus("c", WatcherState.ACTIVE, timedelta(seconds=60), _START),
+    ]
+
+
+def test_reload_publishes_the_new_statuses(clock: FakeClock, bus: EventBus) -> None:
+    """Test that ConfigReloaded carries the new watchers, not checked yet."""
+    reloads: list[ConfigReloaded] = []
+    bus.subscribe(ConfigReloaded, reloads.append)
+    scheduler = Scheduler(clock, lambda: [_watcher("b", 60, bus)], bus)
+    scheduler.add(_watcher("a", 30, bus))
+    scheduler.run_pending()
+
+    scheduler.submit(ReloadConfig())
+    scheduler.run_pending()
+
+    status = WatcherStatus("b", WatcherState.ACTIVE, timedelta(seconds=60), None)
+    assert reloads == [ConfigReloaded(statuses=(status,), timestamp=_START)]
+
+
+@pytest.mark.parametrize(
+    ("error", "message"),
+    [
+        (ConfigError("bad file"), "the old watchers keep running: bad file"),
+        (RuntimeError("bug"), "Unexpected error while reloading the config"),
+    ],
+)
+def test_failed_reload_keeps_the_old_watchers(
+    clock: FakeClock,
+    bus: EventBus,
+    caplog: pytest.LogCaptureFixture,
+    error: Exception,
+    message: str,
+) -> None:
+    """Test that a failed reload is logged and changes neither the schedule nor the states."""
+    reloads: list[ConfigReloaded] = []
+    bus.subscribe(ConfigReloaded, reloads.append)
+
+    def fail_to_load() -> list[Watcher]:
+        """Fail like a broken config file would."""
+        raise error
+
+    scheduler = Scheduler(clock, fail_to_load, bus)
+    scheduler.add(_watcher("a", 30, bus))
+    scheduler.run_pending()
+    statuses = scheduler.statuses()
+
+    scheduler.submit(ReloadConfig())
+    with caplog.at_level(logging.ERROR):
+        assert scheduler.run_pending() == 0
+
+    assert message in caplog.text
+    assert scheduler.statuses() == statuses
+    assert scheduler.next_due() == _START + timedelta(seconds=30)
+    assert reloads == []
+
+
+def test_reload_without_a_loader_is_ignored(
+    clock: FakeClock, bus: EventBus, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Test that a scheduler whose watchers were added in Python logs and ignores ReloadConfig."""
+    scheduler = Scheduler(clock)
+    scheduler.add(_watcher("a", 30, bus))
+
+    scheduler.submit(ReloadConfig())
+    with caplog.at_level(logging.WARNING):
+        assert scheduler.run_pending() == 1
+
+    assert "Ignoring ReloadConfig" in caplog.text
+
+
+def test_reload_without_a_bus_replaces_the_watchers(clock: FakeClock, bus: EventBus) -> None:
+    """Test that a scheduler without a bus can reload too; it only publishes nothing."""
+    scheduler = Scheduler(clock, lambda: [_watcher("b", 30, bus)])
+
+    scheduler.submit(ReloadConfig())
+    scheduler.run_pending()
+
+    assert [status.name for status in scheduler.statuses()] == ["b"]
+
+
+def test_run_forever_without_watchers_waits_for_a_reload(bus: EventBus) -> None:
+    """Test that the loop of a scheduler with a loader goes on, so a reload can bring watchers."""
+    checks: queue.SimpleQueue[CheckCompleted] = queue.SimpleQueue()
+    reloads: queue.SimpleQueue[ConfigReloaded] = queue.SimpleQueue()
+    bus.subscribe(CheckCompleted, checks.put)
+    bus.subscribe(ConfigReloaded, reloads.put)
+    configs = iter([[], [_watcher("a", 3600, bus)]])
+    scheduler = Scheduler(load_watchers=lambda: next(configs), event_bus=bus)
+    engine = threading.Thread(target=scheduler.run_forever)
+    engine.start()
+
+    scheduler.submit(ReloadConfig())
+    emptied = reloads.get(timeout=5)
+    scheduler.submit(ReloadConfig())
+    check = checks.get(timeout=5)
+    scheduler.stop()
+    engine.join(timeout=5)
+
+    assert emptied.statuses == ()
+    assert check.watcher_name == "a"
+    assert not engine.is_alive()
 
 
 def test_run_forever_sleeps_until_each_due_check(clock: FakeClock, bus: EventBus) -> None:

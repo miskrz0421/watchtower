@@ -8,20 +8,17 @@ from PySide6.QtCore import QObject, Qt
 from PySide6.QtGui import QAction, QColor, QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon, QWidget
 
-from watchtower._events import WatcherState, WatcherStateChanged
-from watchtower.core._commands import Pause, Resume
+from watchtower._events import ConfigReloaded, WatcherState, WatcherStateChanged
+from watchtower.core._commands import Pause, ReloadConfig, Resume
 from watchtower.core._scheduler import Scheduler
 from watchtower.gui._bridge import EngineBridge
+from watchtower.gui._colours import STATE_COLOURS
 
-_GREEN = QColor("#2e9e44")
-_ORANGE = QColor("#e8a317")
-_RED = QColor("#d64545")
-_GREY = QColor("#8a8a8a")
 _ICON_SIZE = 64
 
 
 class TrayIcon(QSystemTrayIcon):
-    """Tray icon coloured by the worst watcher state, with Open, Pause all, Resume all and Quit."""
+    """Tray icon coloured by the worst watcher state, with a menu for the whole app."""
 
     def __init__(
         self,
@@ -46,6 +43,7 @@ class TrayIcon(QSystemTrayIcon):
         self.setContextMenu(self._menu)
         self.activated.connect(self._on_activated)
         bridge.state_changed.connect(self.update_state)
+        bridge.config_reloaded.connect(self.replace_states)
         self._show_health()
 
     def update_state(self, changed: WatcherStateChanged) -> None:
@@ -55,6 +53,15 @@ class TrayIcon(QSystemTrayIcon):
             changed: Event published when the watcher changed state.
         """
         self._states[changed.watcher_name] = changed.new_state
+        self._show_health()
+
+    def replace_states(self, reloaded: ConfigReloaded) -> None:
+        """Show the states of the watchers that replaced the old ones.
+
+        Args:
+            reloaded: Event published when a reload replaced the watchers.
+        """
+        self._states = {status.name: status.state for status in reloaded.statuses}
         self._show_health()
 
     def open_window(self) -> None:
@@ -73,17 +80,22 @@ class TrayIcon(QSystemTrayIcon):
         for name in self._states:
             self._scheduler.submit(Resume(name))
 
+    def reload_config(self) -> None:
+        """Ask the scheduler to read the config file again."""
+        self._scheduler.submit(ReloadConfig())
+
     def _build_menu(self) -> QMenu:
         """Create the right-click menu.
 
         Returns:
-            The menu with Open, Pause all, Resume all and Quit.
+            The menu with Open, Pause all, Resume all, Reload config and Quit.
         """
         menu = QMenu()
         for text, slot in [
             ("Open", self.open_window),
             ("Pause all", self.pause_all),
             ("Resume all", self.resume_all),
+            ("Reload config", self.reload_config),
             ("Quit", QApplication.quit),
         ]:
             action = QAction(text, menu)
@@ -109,7 +121,7 @@ class TrayIcon(QSystemTrayIcon):
 
 
 def _health_colour(states: set[WatcherState]) -> QColor:
-    """Return the colour of the worst state: red, orange, grey when all paused, else green.
+    """Return the colour of the worst state; paused watchers count only when all are paused.
 
     Args:
         states: The states of all watchers.
@@ -118,14 +130,14 @@ def _health_colour(states: set[WatcherState]) -> QColor:
         The colour for the tray icon.
     """
     if WatcherState.DISABLED in states:
-        colour = _RED
+        worst = WatcherState.DISABLED
     elif WatcherState.BACKOFF in states:
-        colour = _ORANGE
+        worst = WatcherState.BACKOFF
     elif states == {WatcherState.PAUSED}:
-        colour = _GREY
+        worst = WatcherState.PAUSED
     else:
-        colour = _GREEN
-    return colour
+        worst = WatcherState.ACTIVE
+    return STATE_COLOURS[worst]
 
 
 def _dot_icon(colour: QColor) -> QIcon:

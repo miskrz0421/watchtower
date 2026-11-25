@@ -12,7 +12,7 @@ import pytest
 from conftest import SAMPLE_LISTINGS, FakeListings
 from watchtower import EventBus
 from watchtower.cli import main
-from watchtower.core import Scheduler
+from watchtower.core import ReloadConfig, Scheduler
 from watchtower.storage import HistoryStore
 
 
@@ -219,10 +219,11 @@ def test_run_checks_until_ctrl_c(
     assert len(list(HistoryStore(tmp_path / "watchtower.db").checks())) == 1
 
 
-def test_gui_starts_the_app_with_the_watchers_of_the_config(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Test that gui gives run_gui the scheduled watchers and the history, and returns its code."""
+@pytest.fixture
+def started_apps(
+    monkeypatch: pytest.MonkeyPatch,
+) -> list[tuple[Scheduler, HistoryStore | None]]:
+    """Replace the app, which ends with code 3, and return what each start of it got."""
     started: list[tuple[Scheduler, HistoryStore | None]] = []
 
     def fake_run_gui(
@@ -233,11 +234,67 @@ def test_gui_starts_the_app_with_the_watchers_of_the_config(
         return 3
 
     monkeypatch.setattr("watchtower.gui.run_gui", fake_run_gui)
+    return started
+
+
+def test_gui_reload_uses_the_edited_config(
+    tmp_path: Path, started_apps: list[tuple[Scheduler, HistoryStore | None]]
+) -> None:
+    """Test that ReloadConfig reads the file again and every check is still recorded once."""
+    watched = tmp_path / "notes.txt"
+    watched.write_text("contents\n", encoding="utf-8")
+    config = _file_config(tmp_path, watched)
+    main(["gui", str(config)])
+    [(scheduler, _)] = started_apps
+    scheduler.run_pending()
+
+    edited = config.read_text(encoding="utf-8").replace("name: Notes", "name: Diary")
+    config.write_text(edited, encoding="utf-8")
+    scheduler.submit(ReloadConfig())
+    scheduler.run_pending()
+
+    checks = HistoryStore(tmp_path / "watchtower.db").checks()
+    assert [check.watcher_name for check in checks] == ["Notes", "Diary"]
+
+
+@pytest.mark.parametrize(
+    ("edited", "message"),
+    [
+        ("database: other.db\nwatchers: []\n", "The database cannot be changed"),
+        ("watchers: [", "Invalid YAML"),
+    ],
+)
+def test_gui_reload_rejects_a_bad_config(
+    tmp_path: Path,
+    started_apps: list[tuple[Scheduler, HistoryStore | None]],
+    caplog: pytest.LogCaptureFixture,
+    edited: str,
+    message: str,
+) -> None:
+    """Test that an invalid file or another database is logged and the old watcher stays."""
+    watched = tmp_path / "notes.txt"
+    watched.write_text("contents\n", encoding="utf-8")
+    config = _file_config(tmp_path, watched)
+    main(["gui", str(config)])
+    [(scheduler, _)] = started_apps
+
+    config.write_text(edited, encoding="utf-8")
+    scheduler.submit(ReloadConfig())
+    scheduler.run_pending()
+
+    assert message in caplog.text
+    assert [status.name for status in scheduler.statuses()] == ["Notes"]
+
+
+def test_gui_starts_the_app_with_the_watchers_of_the_config(
+    tmp_path: Path, started_apps: list[tuple[Scheduler, HistoryStore | None]]
+) -> None:
+    """Test that gui gives run_gui the scheduled watchers and the history, and returns its code."""
     watched = tmp_path / "notes.txt"
     watched.write_text("contents\n", encoding="utf-8")
 
     assert main(["gui", str(_file_config(tmp_path, watched))]) == 3
-    [(scheduler, history)] = started
+    [(scheduler, history)] = started_apps
     assert [status.name for status in scheduler.statuses()] == ["Notes"]
     assert history is not None
 

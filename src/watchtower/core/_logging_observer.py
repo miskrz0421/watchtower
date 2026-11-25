@@ -7,6 +7,7 @@ import logging
 from watchtower._events import (
     ChangeDetected,
     CheckCompleted,
+    ConfigReloaded,
     EventBus,
     WatcherState,
     WatcherStateChanged,
@@ -16,7 +17,7 @@ _logger = logging.getLogger(__name__)
 
 
 class LoggingObserver:
-    """Logs checks, changes and state changes; failures at WARNING (ADR-020, ADR-023)."""
+    """Logs checks, changes, state changes and reloads; failures at WARNING (ADR-020, ADR-023)."""
 
     def attach(self, event_bus: EventBus) -> None:
         """Start logging the events published on a bus.
@@ -27,6 +28,7 @@ class LoggingObserver:
         event_bus.subscribe(CheckCompleted, self._log_check)
         event_bus.subscribe(ChangeDetected, self._log_change)
         event_bus.subscribe(WatcherStateChanged, self._log_state)
+        event_bus.subscribe(ConfigReloaded, self._log_reload)
 
     def _log_check(self, check: CheckCompleted) -> None:
         """Log the outcome of a finished check.
@@ -67,3 +69,11 @@ class LoggingObserver:
             changed.new_state,
             changed.old_state,
         )
+
+    def _log_reload(self, reloaded: ConfigReloaded) -> None:
+        """Log that the watchers were replaced.
+
+        Args:
+            reloaded: Event published when a reload replaced the watchers.
+        """
+        _logger.info("Config reloaded: %d watcher(s)", len(reloaded.statuses))

@@ -46,7 +46,7 @@ src/watchtower/
 │                    _states (State), _commands
 ├── reports/         _tables (pandas), _charts (matplotlib)
 └── gui/             _app (run_gui), _engine (EngineThread), _bridge (EngineBridge), _tray,
-    │                _main_window
+    │                _main_window, _log_handler
     └── tabs/        _watchers, _changes, _reports, _log
 
 What is public and what is private is decided in [ADR-015](decisions.md).
@@ -81,9 +81,9 @@ These are the contracts between the packages. A change to one needs an entry in
 |---|---|---|
 | `CheckCompleted` | After every check (success or failure), with duration | HistoryRecorder, LoggingObserver, GUI |
 | `ChangeDetected` | A ChangeEvent passed the filters | HistoryRecorder, LoggingObserver, GUI Changes tab |
-| `FetchFailed` | A source raised after retries | GUI Log tab |
+| `FetchFailed` | A source raised after retries | EngineBridge (`fetch_failed` signal) |
 | `WatcherStateChanged` | State machine transition (published by the Scheduler) | LoggingObserver, GUI Watchers tab, tray icon |
-| `ConfigReloaded` | The scheduler replaced the watchers after a `ReloadConfig` | GUI Watchers tab, tray icon |
+| `ConfigReloaded` | The scheduler replaced the watchers after a `ReloadConfig` | LoggingObserver, GUI Watchers tab, tray icon |
 
 ## Watcher state machine
 
@@ -101,7 +101,8 @@ Each state is an object (State pattern, ADR-023): `delay(interval)` says when th
 checked next (None: not at all), and `after_success()` / `after_failure()` give the state that
 follows a check. The Scheduler keeps one per watcher and publishes `WatcherStateChanged` when the
 kind changes. A watcher that becomes `Disabled` alerts the user through its own notifiers
-(ADR-033). `Paused` and `Disabled` only leave via an explicit `Resume`.
+(ADR-033). `Paused` and `Disabled` only leave via an explicit `Resume`, or a reload, which makes
+every watcher start again as `Active` (ADR-028).
 
 ## Storage (SQLite, one file)
 
@@ -122,6 +123,8 @@ Each thread opens its own connection (`sqlite3` connections must not be shared a
 - **UI → Engine:** buttons call `Scheduler.submit` with a command (`Pause`, `Resume`,
   `CheckNow`, `ReloadConfig`); it goes on a thread-safe `queue.SimpleQueue` and the scheduler
   applies it at the start of its next `run_pending` (Command pattern, ADR-023).
+- **Log → UI:** a `logging.Handler` sends every line of the `watchtower` loggers to the bridge, which
+  passes it to the Log tab as a signal (ADR-032).
 - **Desktop notifications:** the `desktop` notifier uses the `desktop-notifier` package, not Qt,
   so it works the same with and without the GUI (ADR-024).
 - Headless mode (`watchtower run`) uses the same engine in the main thread and never imports Qt.
