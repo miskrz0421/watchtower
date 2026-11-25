@@ -589,6 +589,25 @@ PR that makes the decision.
 - Consequences: a notifier must accept an event without changes. The alert runs in the engine
   thread, so a slow notifier delays the next check, as with changes.
 
+## ADR-029: Retrying transient HTTP failures
+- Status: accepted · M6
+- Context: `HttpSource.fetch` raises `httpx.HTTPError` for both temporary problems (connection
+  reset, timeout) and permanent ones (404, 500). The engine is synchronous (ADR-007), so every
+  second spent waiting blocks all other watchers.
+- Decision:
+  - `fetch` is wrapped with `@retry(on=httpx.TransportError, times=3, first_delay=0.25)` and
+    `@timed` (outermost, so the logged time includes the retries).
+  - Only `httpx.TransportError` is retried: it covers connection errors and timeouts, which are
+    usually temporary. `httpx.HTTPStatusError` (from `raise_for_status`) is not retried, because a
+    4xx will not change and a 5xx is handled by the scheduler's backoff (ADR-023).
+  - `first_delay=0.25` with the default `backoff=2.0` waits 0.25s then 0.5s, at most 0.75s extra
+    per check, short enough not to stall the whole app.
+- Alternatives: retrying `httpx.HTTPError` (would retry 404s three times for nothing); longer
+  delays (blocks every watcher in the synchronous engine); retrying 5xx (the scheduler already backs
+  off after a failed check).
+- Consequences: a flaky connection gets two quick extra tries; a broken URL still fails on the
+  first response. Tests keep using `httpx.MockTransport`, which never raises `TransportError`.
+
 ## ADR-034: The registry checks plugins and their arguments
 - Status: accepted · M6
 - Context: a wrong value in the config, such as `price_below: abc`, was found only during a check,

@@ -5,6 +5,7 @@ from __future__ import annotations
 import httpx
 
 from watchtower._http import DEFAULT_TIMEOUT_SECONDS, USER_AGENT
+from watchtower._retry import retry, timed
 from watchtower.sources._base import Source
 
 
@@ -34,6 +35,8 @@ class HttpSource(Source):
         self._timeout = timeout
         self._transport = transport
 
+    @timed
+    @retry(on=httpx.TransportError, times=3, first_delay=0.25)
     def fetch(self) -> str:
         """Download the URL and return the response body as text.
 
