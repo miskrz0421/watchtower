@@ -37,5 +37,5 @@ class MainWindow(QMainWindow):
         tabs.addTab(WatchersTab(bridge, scheduler), "Watchers")
         tabs.addTab(ChangesTab(bridge, history), "Changes")
         tabs.addTab(ReportsTab(history), "Reports")
-        tabs.addTab(LogTab(), "Log")
+        tabs.addTab(LogTab(bridge), "Log")
         self.setCentralWidget(tabs)
