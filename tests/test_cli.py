@@ -40,7 +40,7 @@ def _file_config(folder: Path, watched: Path, database: str | None = "watchtower
 
 
 def _flats_config(folder: Path, base_url: str) -> Path:
-    """Write the demo config: new flats under 3000 without agencies."""
+    """Write a config watching the listings website for new flats under 3000 without agencies."""
     return _write_config(
         folder,
         dedent(f"""
@@ -246,7 +246,7 @@ def test_gui_starts_the_app_with_the_watchers_of_the_config(
 def test_check_reports_only_cheap_new_flats(
     tmp_path: Path, fake_listings: FakeListings, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Test the M3 demo: only a new flat under 3000 without an agency is reported."""
+    """Test that only a new flat under 3000 without an agency is reported."""
     config = _flats_config(tmp_path, fake_listings.base_url)
     assert main(["check", str(config)]) == 0
     assert "Cheap flats: baseline saved" in capsys.readouterr().out
