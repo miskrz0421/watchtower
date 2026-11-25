@@ -5,9 +5,10 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
+from functools import partial
 from pathlib import Path
 
-from watchtower import ChangeEvent, EventBus, WatchtowerError, list_plugins
+from watchtower import ChangeEvent, ConfigError, EventBus, WatchtowerError, list_plugins
 from watchtower.config import Config, load_config
 from watchtower.core import LoggingObserver, Scheduler, Watcher
 from watchtower.storage import HistoryRecorder, HistoryStore, SnapshotStore
@@ -40,36 +41,47 @@ def _open_database(database: Path | None, event_bus: EventBus) -> SnapshotStore 
     return SnapshotStore(database)
 
 
-def _build_watchers(config: Config, event_bus: EventBus) -> list[Watcher]:
-    """Build every watcher of a config, sharing one event bus and one database.
+def _build_watchers(
+    config: Config, store: SnapshotStore | None, event_bus: EventBus
+) -> list[Watcher]:
+    """Build every watcher of a config, sharing one event bus and one snapshot store.
 
     Args:
         config: Loaded config file.
+        store: Store for the snapshots; None keeps them in memory.
         event_bus: Bus all watchers publish on.
 
     Returns:
         The watchers, in file order.
 
     Raises:
-        WatchtowerError: If the database cannot be opened or a watcher is incomplete.
+        ConfigError: If a watcher is incomplete.
     """
-    store = _open_database(config.database, event_bus)
     return [builder.store(store).event_bus(event_bus).build() for builder in config.watchers]
 
 
-def _scheduler_for(watchers: list[Watcher]) -> Scheduler:
-    """Return a scheduler with every watcher added.
+def _reload_watchers(
+    path: Path, database: Path | None, store: SnapshotStore | None, event_bus: EventBus
+) -> list[Watcher]:
+    """Read a config file again and build its watchers on the database that is already open.
 
     Args:
-        watchers: Watchers to schedule.
+        path: YAML config file.
+        database: Database the app was started with, or None.
+        store: Snapshot store of that database, or None.
+        event_bus: Bus all watchers publish on.
 
     Returns:
-        The scheduler, not running yet.
+        The new watchers, in file order.
+
+    Raises:
+        ConfigError: If the file is invalid or names another database.
     """
-    scheduler = Scheduler()
-    for watcher in watchers:
-        scheduler.add(watcher)
-    return scheduler
+    config = load_config(path)
+    if config.database != database:
+        msg = "The database cannot be changed while the app runs; restart it"
+        raise ConfigError(msg)
+    return _build_watchers(config, store, event_bus)
 
 
 def _describe_check(watcher_name: str, is_first_run: bool, event: ChangeEvent | None) -> str:
@@ -126,7 +138,10 @@ def _check_command(args: argparse.Namespace) -> int:
     Raises:
         WatchtowerError: If the config or the database cannot be used.
     """
-    watchers = _build_watchers(load_config(args.config), EventBus())
+    config = load_config(args.config)
+    event_bus = EventBus()
+    store = _open_database(config.database, event_bus)
+    watchers = _build_watchers(config, store, event_bus)
     results = [_check_watcher(watcher) for watcher in watchers]
     return 0 if all(results) else 1
 
@@ -143,10 +158,14 @@ def _run_command(args: argparse.Namespace) -> int:
     Raises:
         WatchtowerError: If the config or the database cannot be used.
     """
+    config = load_config(args.config)
     event_bus = EventBus()
     LoggingObserver().attach(event_bus)
-    watchers = _build_watchers(load_config(args.config), event_bus)
-    scheduler = _scheduler_for(watchers)
+    store = _open_database(config.database, event_bus)
+    watchers = _build_watchers(config, store, event_bus)
+    scheduler = Scheduler()
+    for watcher in watchers:
+        scheduler.add(watcher)
 
     _configure_logging()
     print(f"Running {len(watchers)} watcher(s). Press Ctrl+C to stop.")
@@ -175,7 +194,11 @@ def _gui_command(args: argparse.Namespace) -> int:
     config = load_config(args.config)
     event_bus = EventBus()
     LoggingObserver().attach(event_bus)
-    scheduler = _scheduler_for(_build_watchers(config, event_bus))
+    store = _open_database(config.database, event_bus)
+    load_watchers = partial(_reload_watchers, args.config, config.database, store, event_bus)
+    scheduler = Scheduler(load_watchers=load_watchers, event_bus=event_bus)
+    for watcher in _build_watchers(config, store, event_bus):
+        scheduler.add(watcher)
     history = HistoryStore(config.database) if config.database is not None else None
 
     _configure_logging()

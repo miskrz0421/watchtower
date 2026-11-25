@@ -83,7 +83,7 @@ These are the contracts between the packages. A change to one needs an entry in
 | `ChangeDetected` | A ChangeEvent passed the filters | HistoryRecorder, LoggingObserver, GUI Changes tab |
 | `FetchFailed` | A source raised after retries | GUI Log tab |
 | `WatcherStateChanged` | State machine transition (published by the Scheduler) | LoggingObserver, GUI Watchers tab, tray icon |
-| `ConfigReloaded` | The scheduler replaced the watchers after a `ReloadConfig` | GUI Watchers tab, tray icon |
+| `ConfigReloaded` | The scheduler replaced the watchers after a `ReloadConfig` | LoggingObserver, GUI Watchers tab, tray icon |
 
 ## Watcher state machine
 
@@ -100,7 +100,8 @@ Paused ──────────────────────┘    
 Each state is an object (State pattern, ADR-023): `delay(interval)` says when the watcher is
 checked next (None: not at all), and `after_success()` / `after_failure()` give the state that
 follows a check. The Scheduler keeps one per watcher and publishes `WatcherStateChanged` when the
-kind changes. `Paused` and `Disabled` only leave via an explicit `Resume`.
+kind changes. `Paused` and `Disabled` only leave via an explicit `Resume`, or a reload, which makes
+every watcher start again as `Active` (ADR-028).
 
 ## Storage (SQLite, one file)
 

@@ -535,6 +535,17 @@ PR that makes the decision.
 - Alternatives: the GUI reads `statuses()` after the event (two threads using the same
   dictionaries); one event per added and removed watcher (the tabs would have to merge them).
 - Consequences: the Watchers tab and the tray replace all their rows on one signal.
+- Note (M6, reload PR): a reload is a restart of the watchers without closing the app.
+  - The scheduler gets `load_watchers`, a function that returns new watchers, and calls it in its own
+    thread. It does not know about YAML; the CLI makes the function from the config path. Every
+    watcher is built before the first one is replaced, so any error leaves the old ones untouched.
+  - Every new watcher starts as Active and is checked at once, also one that was Paused or Disabled.
+    Keeping the old state by name would need rules for a watcher whose source was changed in the file.
+  - The database stays the one the app was started with, because the `HistoryRecorder` and the GUI
+    already use it. A file that names another one is rejected like an invalid file. With a database
+    the new watchers continue from the saved snapshots; without one their first check is a baseline.
+  - A scheduler that can reload keeps running without watchers, so a file with an empty list can be
+    corrected and reloaded.
 
 ## ADR-034: The registry checks plugins and their arguments
 - Status: accepted · M6
