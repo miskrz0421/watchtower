@@ -536,6 +536,25 @@ PR that makes the decision.
   dictionaries); one event per added and removed watcher (the tabs would have to merge them).
 - Consequences: the Watchers tab and the tray replace all their rows on one signal.
 
+## ADR-032: The Log tab shows Watchtower's log through the bridge
+- Status: accepted · M6
+- Context: checks, failures and reloads are logged (ADR-020), but a user of the tray app has no
+  terminal. Lines are logged in the engine thread and must not bring secrets into the window (ADR-010).
+- Decision:
+  - While the app runs, a `LogHandler` on the `watchtower` logger turns each record into a line and
+    emits it as `EngineBridge.line_logged`. Qt queues it to the GUI thread like the other signals
+    (ADR-024), so the engine never touches a widget.
+  - Other libraries are left out. `httpx`, for instance, logs full addresses.
+  - A line has the local time, the level and the message. Of an exception only its type is shown: a
+    traceback may contain the text of an error with a secret. The terminal still has it.
+  - The tab keeps the last 1000 lines and starts empty; the history is in the database, not in the log.
+- Alternatives: the tab as one more observer of the bus (it would repeat the texts of
+  `LoggingObserver` and miss what is only logged, such as a failed notifier); a log file that
+  the tab reads (one more setting, and the tab would have to poll the file); hiding known secrets
+  in the text (the loader would have to keep every substituted value).
+- Consequences: whatever is logged as a message is visible, so messages must not contain secrets. The
+  error text of a source may contain its address, so a secret token in a source URL would be shown.
+
 ## ADR-034: The registry checks plugins and their arguments
 - Status: accepted · M6
 - Context: a wrong value in the config, such as `price_below: abc`, was found only during a check,

@@ -14,6 +14,7 @@ from watchtower._events import EventBus
 from watchtower.core._scheduler import Scheduler
 from watchtower.gui._bridge import EngineBridge
 from watchtower.gui._engine import EngineThread
+from watchtower.gui._log_handler import log_sent_to
 from watchtower.gui._main_window import MainWindow
 from watchtower.gui._tray import TrayIcon
 from watchtower.storage._history import HistoryStore
@@ -43,10 +44,11 @@ def run_gui(scheduler: Scheduler, event_bus: EventBus, history: HistoryStore | N
 
     window.show()
     tray.show()
-    engine.start()
-    with _ctrl_c_quits(app):
-        exit_code = app.exec()
-    engine.stop()
+    with log_sent_to(bridge):
+        engine.start()
+        with _ctrl_c_quits(app):
+            exit_code = app.exec()
+        engine.stop()
     return exit_code
 
 

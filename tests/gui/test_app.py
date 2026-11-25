@@ -2,18 +2,22 @@
 
 from __future__ import annotations
 
+import logging
 import signal
 
 import pytest
 from PySide6.QtCore import QTimer
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QPlainTextEdit
 from pytestqt.qtbot import QtBot
 
 from watchtower import CheckCompleted, EventBus
 from watchtower.core import Scheduler
 from watchtower.gui import MainWindow, run_gui
+from watchtower.gui.tabs import LogTab
 
 pytestmark = pytest.mark.gui
+
+_logger = logging.getLogger("watchtower.test")
 
 
 def _open_main_window() -> MainWindow:
@@ -44,6 +48,28 @@ def test_app_checks_in_the_background_until_the_window_is_closed(
 
     assert run_gui(hourly_scheduler, bus, history=None) == 0
     assert len(checks) == 1
+
+
+def test_log_lines_of_the_engine_reach_the_window(
+    qtbot: QtBot, bus: EventBus, hourly_scheduler: Scheduler
+) -> None:
+    """Test that a line logged in the engine thread is shown while the app runs."""
+    bus.subscribe(CheckCompleted, lambda check: _logger.warning("checked %s", check.watcher_name))
+    shown: list[str] = []
+
+    def close_after_the_line_is_shown() -> None:
+        """Wait for the line in the Log tab, then close the window."""
+        window = _open_main_window()
+        view = window.findChild(LogTab).findChild(QPlainTextEdit)
+        qtbot.waitUntil(lambda: "checked hourly" in view.toPlainText())
+        shown.append(view.toPlainText())
+        window.close()
+
+    QTimer.singleShot(0, close_after_the_line_is_shown)
+    QTimer.singleShot(10_000, QApplication.quit)  # never hang the test run
+
+    assert run_gui(hourly_scheduler, bus, history=None) == 0
+    assert len(shown) == 1
 
 
 def test_ctrl_c_quits_the_app(qtbot: QtBot, bus: EventBus, hourly_scheduler: Scheduler) -> None:
