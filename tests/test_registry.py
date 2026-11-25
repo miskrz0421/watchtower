@@ -2,11 +2,20 @@
 
 from __future__ import annotations
 
+import io
+from collections.abc import Iterable
+from pathlib import Path
+from types import UnionType
+from typing import cast
+
 import pytest
 
 from watchtower import (
+    ChangeEvent,
+    ChangeKind,
     create,
     create_differ,
+    create_filter,
     create_notifier,
     create_source,
     list_plugins,
@@ -15,41 +24,116 @@ from watchtower import (
     register_notifier,
     register_source,
 )
+from watchtower._models import Change, Item, Snapshot
+from watchtower._registry import _accepts, _base_class_for, _check_arguments, _Kind
 from watchtower.diffs import ItemDiff, TextDiff
-from watchtower.notifiers import ConsoleNotifier
-from watchtower.sources import FakeSource, RSSSource, WebPageSource
+from watchtower.diffs._base import Differ
+from watchtower.filters import (
+    KindIs,
+    Matches,
+    NewItems,
+    PriceAbove,
+    PriceBelow,
+    TextContains,
+)
+from watchtower.filters._base import Filter
+from watchtower.notifiers import (
+    ConsoleNotifier,
+    DesktopNotifier,
+    DiscordNotifier,
+)
+from watchtower.notifiers._base import Notifier
+from watchtower.sources import (
+    FakeSource,
+    FileSource,
+    JSONAPISource,
+    RSSSource,
+    WebPageSource,
+)
+from watchtower.sources._base import Source
 
 
-def test_m2_plugins_are_registered() -> None:
-    """Test that the M2 plugins are available through the registry."""
-    assert isinstance(create_source("rss", url="http://test/feed"), RSSSource)
-    assert isinstance(
-        create_source("webpage", url="http://test/page", selector=".offer"), WebPageSource
-    )
-    assert isinstance(create_differ("items"), ItemDiff)
+class _FakeBackend:
+    """Minimal ``_NotificationBackend`` stand-in for tests."""
+
+    def send(self, title: str, message: str) -> str:
+        """Pretend to show a notification."""
+        return "id"
+
+
+@pytest.mark.parametrize(
+    ("kind", "name", "params", "expected"),
+    [
+        ("source", "fake", {"contents": ["step 1"]}, FakeSource),
+        ("source", "rss", {"url": "http://test/feed"}, RSSSource),
+        (
+            "source",
+            "webpage",
+            {"url": "http://test/page", "selector": ".offer"},
+            WebPageSource,
+        ),
+        ("source", "file", {"path": "/tmp/watchtower-test"}, FileSource),
+        ("source", "json_api", {"url": "http://test/api"}, JSONAPISource),
+        ("differ", "items", {}, ItemDiff),
+        ("differ", "text", {"context_lines": 5}, TextDiff),
+        ("filter", "new_items", {}, NewItems),
+        ("filter", "kind_is", {"kind": "new"}, KindIs),
+        ("filter", "price_below", {"limit": 3000}, PriceBelow),
+        ("filter", "price_above", {"limit": 3000}, PriceAbove),
+        ("filter", "text_contains", {"phrase": "agency"}, TextContains),
+        ("filter", "matches", {"pattern": "foo"}, Matches),
+        ("notifier", "console", {}, ConsoleNotifier),
+        (
+            "notifier",
+            "discord",
+            {"webhook_url": "http://example.com/hook"},
+            DiscordNotifier,
+        ),
+        ("notifier", "desktop", {"backend": _FakeBackend()}, DesktopNotifier),
+    ],
+)
+def test_all_builtin_plugins_are_registered(
+    kind: str, name: str, params: dict[str, object], expected: type[object]
+) -> None:
+    """Every built-in plugin can be constructed through the registry."""
+    instance = create(kind, name, **params)
+    assert isinstance(instance, expected)
 
 
 def test_registry_registration_and_creation() -> None:
     """Test registering classes with decorators and creating instances with parameters."""
 
     @register_source("dummy_src")
-    class DummySource:
+    class DummySource(Source):
         def __init__(self, greeting: str) -> None:
             self.greeting = greeting
 
+        def fetch(self) -> str:
+            return ""
+
+        def parse(self, raw: str) -> Iterable[Item]:
+            return ()
+
     @register_differ("dummy_diff")
-    class DummyDiffer:
+    class DummyDiffer(Differ):
         def __init__(self, mode: str = "fast") -> None:
             self.mode = mode
 
+        def diff(self, old: Snapshot | None, new: Snapshot) -> list[Change]:
+            return []
+
     @register_filter("dummy_filt")
-    class DummyFilter:
-        pass
+    class DummyFilter(Filter):
+        def matches(self, change: Change) -> bool:
+            return True
 
     @register_notifier("dummy_notify")
-    class DummyNotifier:
+    class DummyNotifier(Notifier):
         def __init__(self, endpoint: str) -> None:
             self.endpoint = endpoint
+
+        def send(self, event: ChangeEvent) -> None:
+            pass
 
     src = create("source", "dummy_src", greeting="hello")
     assert isinstance(src, DummySource)
@@ -75,6 +159,12 @@ def test_registry_unknown_kind_and_name_errors() -> None:
         create("source", "nonexistent_source")
 
 
+def test_create_kind_and_name_are_positional_only() -> None:
+    """``kind``/``name`` are positional-only so ``kind`` constructor params pass through."""
+    filt = create("filter", "kind_is", kind="new")
+    assert isinstance(filt, KindIs)
+
+
 def test_typed_factory_create_source() -> None:
     """Test create_source returns a properly typed Source instance."""
     source = create_source("fake", contents=["step 1"])
@@ -91,3 +181,158 @@ def test_typed_factory_create_notifier() -> None:
     """Test create_notifier returns a properly typed Notifier instance."""
     notifier = create_notifier("console")
     assert isinstance(notifier, ConsoleNotifier)
+
+
+def test_registry_duplicate_name_raises() -> None:
+    """Registering the same name twice for a kind raises ValueError."""
+
+    @register_source("dup_src")
+    class DupSource(Source):
+        def fetch(self) -> str:
+            return ""
+
+        def parse(self, raw: str) -> Iterable[Item]:
+            return ()
+
+    with pytest.raises(ValueError, match="already registered"):
+
+        @register_source("dup_src")
+        class DupSourceAgain(Source):
+            def fetch(self) -> str:
+                return ""
+
+            def parse(self, raw: str) -> Iterable[Item]:
+                return ()
+
+
+def test_registry_wrong_kind_class_raises() -> None:
+    """Registering a class that is not a Source subclass raises TypeError."""
+    with pytest.raises(TypeError, match="not a subclass of Source"):
+
+        @register_source("not_a_source")
+        class NotASource:
+            def __init__(self) -> None:
+                pass
+
+
+def test_registry_wrong_argument_type_raises() -> None:
+    """Passing an argument of the wrong type raises TypeError."""
+
+    @register_source("bad_arg_src")
+    class BadArgSource(Source):
+        def __init__(self, count: int) -> None:
+            self.count = count
+
+        def fetch(self) -> str:
+            return ""
+
+        def parse(self, raw: str) -> Iterable[Item]:
+            return ()
+
+    with pytest.raises(TypeError, match="count"):
+        create_source("bad_arg_src", count="not-an-int")
+
+
+def test_registry_wrong_arity_raises() -> None:
+    """Missing a required argument or passing an unexpected one raises TypeError."""
+
+    @register_source("arity_src")
+    class AritySource(Source):
+        def __init__(self, required: str) -> None:
+            self.required = required
+
+        def fetch(self) -> str:
+            return ""
+
+        def parse(self, raw: str) -> Iterable[Item]:
+            return ()
+
+    with pytest.raises(TypeError, match="required"):
+        create_source("arity_src")
+
+    with pytest.raises(TypeError, match="unexpected"):
+        create_source("arity_src", required="x", extra=1)
+
+
+def test_filter_positional_argument_still_works() -> None:
+    """Positional filter arguments (price_below: 3000) still construct correctly."""
+
+    @register_filter("pos_filt")
+    class PosFilter(Filter):
+        def __init__(self, limit: float) -> None:
+            self.limit = limit
+
+        def matches(self, change: Change) -> bool:
+            return True
+
+    filt = create_filter("pos_filt", 3000)
+    assert isinstance(filt, PosFilter)
+    assert filt.limit == 3000
+
+
+def test_base_class_for_unknown_kind_raises() -> None:
+    """An invalid kind raises ValueError even though it's unreachable via the Literal."""
+    with pytest.raises(ValueError, match="Unknown plugin kind"):
+        _base_class_for(cast(_Kind, "bogus"))
+
+
+def test_wrong_argument_error_does_not_show_the_value() -> None:
+    """A wrong argument's value stays out of the error, because it may be a secret."""
+    with pytest.raises(TypeError, match="argument 'webhook_url' must be str, got list") as error:
+        create_notifier("discord", webhook_url=["http://test/secret"])
+    assert "secret" not in str(error.value)
+
+
+def test_arguments_of_other_types_are_not_checked() -> None:
+    """Arguments without a simple annotation, such as streams, are passed on unchecked."""
+    assert isinstance(create_notifier("console", stream=io.StringIO()), ConsoleNotifier)
+
+
+@pytest.mark.parametrize(
+    ("annotation", "value", "expected"),
+    [
+        (float, 3000, True),
+        (float, 2999.99, True),
+        (float, True, False),
+        (float, "3000", False),
+        (int, True, False),
+        (bool, True, True),
+        (str, ChangeKind.NEW, True),
+        (str | None, None, True),
+        (str | None, 1, False),
+        (str | Path, Path("page.html"), True),
+        (str | Path, 1, False),
+        (list[str], 1, True),
+    ],
+)
+def test_accepts(annotation: type | UnionType, value: object, expected: bool) -> None:
+    """Simple annotations are checked, other annotations accept everything."""
+    assert _accepts(annotation, value) is expected
+
+
+def test_unresolvable_annotation_is_not_checked() -> None:
+    """A constructor annotated with a name unknown at runtime is checked only for arity."""
+
+    class _Unresolvable:
+        def __init__(self, value: NotDefinedAnywhere) -> None:  # noqa: F821
+            self.value = value
+
+    _check_arguments(_Unresolvable, "anything")
+    with pytest.raises(TypeError, match="value"):
+        _check_arguments(_Unresolvable)
+
+
+def test_variadic_arguments_are_not_checked() -> None:
+    """Values collected by *args and **kwargs are not compared with the annotation."""
+
+    class _Variadic:
+        def __init__(self, *items: int, **options: str) -> None:
+            self.items = items
+            self.options = options
+
+    _check_arguments(_Variadic, 1, 2, color="red")
+
+
+def test_list_plugins_unknown_kind() -> None:
+    """An unknown kind returns an empty list for that kind."""
+    assert list_plugins("bogus") == {"bogus": []}

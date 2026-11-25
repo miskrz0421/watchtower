@@ -535,3 +535,22 @@ PR that makes the decision.
 - Alternatives: the GUI reads `statuses()` after the event (two threads using the same
   dictionaries); one event per added and removed watcher (the tabs would have to merge them).
 - Consequences: the Watchers tab and the tray replace all their rows on one signal.
+
+## ADR-034: The registry checks plugins and their arguments
+- Status: accepted · M6
+- Context: a wrong value in the config, such as `price_below: abc`, was found only during a check,
+  and registering a name twice silently replaced the first plugin.
+- Decision:
+  - `@register_*` rejects a name that is already taken and a class that is not a subclass of the
+    base class of its kind.
+  - Before creating a plugin, `create_*` binds the arguments to the constructor and checks those whose
+    annotation has only simple types (`str`, `int`, `float`, `bool`, `None`, `Path`). An `int` fits
+    `float`; a `bool` fits only `bool`. The loader turns the `TypeError` into a `ConfigError`.
+  - The error shows the type of the wrong value but not the value, which may be a secret (ADR-010).
+  - What a type cannot say is checked by the plugin itself: a price limit must be a finite number.
+- Alternatives: checking every type in each constructor (the same code in every plugin); checking
+  every annotation (`isinstance` does not work for `TextIO`, protocols and element types);
+  pydantic (a new dependency for a few simple types).
+- Consequences: a new plugin gets its simple arguments checked by annotating them. Elements of lists
+  and values in `*args` and `**kwargs` are not checked; if an annotation cannot be resolved at runtime,
+  only the argument names and count are.

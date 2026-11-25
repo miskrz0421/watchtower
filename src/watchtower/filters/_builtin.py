@@ -2,11 +2,27 @@
 
 from __future__ import annotations
 
+import math
 import re
 
 from watchtower._models import Change, ChangeKind
 from watchtower._registry import register_filter
 from watchtower.filters._base import Filter
+
+
+def _check_limit(limit: float) -> None:
+    """Check that a price limit is a finite number.
+
+    Args:
+        limit: Price limit to check.
+
+    Raises:
+        TypeError: If the limit is not a number.
+        ValueError: If the limit is NaN or infinite.
+    """
+    if not math.isfinite(limit):
+        msg = f"limit must be a finite number, got {limit}"
+        raise ValueError(msg)
 
 
 @register_filter("new_items")
@@ -61,7 +77,12 @@ class PriceBelow(Filter):
 
         Args:
             limit: Price the item must be below.
+
+        Raises:
+            TypeError: If the limit is not a number.
+            ValueError: If the limit is NaN or infinite.
         """
+        _check_limit(limit)
         self._limit = limit
 
     def matches(self, change: Change) -> bool:
@@ -86,7 +107,12 @@ class PriceAbove(Filter):
 
         Args:
             limit: Price the item must be above.
+
+        Raises:
+            TypeError: If the limit is not a number.
+            ValueError: If the limit is NaN or infinite.
         """
+        _check_limit(limit)
         self._limit = limit
 
     def matches(self, change: Change) -> bool:

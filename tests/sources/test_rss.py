@@ -11,6 +11,7 @@ import pytest
 from conftest import FakeListings
 from watchtower import ParseError
 from watchtower.sources import RSSSource
+from watchtower.sources._rss import _published
 
 FIXTURES = Path(__file__).parents[1] / "fixtures"
 
@@ -199,3 +200,17 @@ def test_rss_source_snapshots_live_feed(fake_listings: FakeListings) -> None:
     assert [item.price for item in items] == [3500.0, 2400.0]
     assert "Two rooms." in items[0].text
     assert items[1].published is None
+
+
+def test_published_rejects_invalid_parsed_type() -> None:
+    """A non-sequence published_parsed raises ParseError."""
+    entry = {"published_parsed": "not-a-tuple"}
+    with pytest.raises(ParseError, match="invalid publication date"):
+        _published(entry, 1)
+
+
+def test_published_rejects_invalid_date_parts() -> None:
+    """Non-integer date parts raise ParseError."""
+    entry = {"published_parsed": ("not", "a", "date", 1, 2, 3)}
+    with pytest.raises(ParseError, match="invalid publication date"):
+        _published(entry, 1)

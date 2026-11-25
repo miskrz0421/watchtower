@@ -62,6 +62,19 @@ def test_price_above() -> None:
     assert not f.matches(Change(kind=ChangeKind.CHANGED, item=no_price))  # no price
 
 
+@pytest.mark.parametrize("filter_class", [PriceBelow, PriceAbove])
+@pytest.mark.parametrize(
+    ("limit", "error"),
+    [("abc", TypeError), (float("nan"), ValueError), (float("inf"), ValueError)],
+)
+def test_price_filters_reject_invalid_limit(
+    filter_class: type[PriceBelow | PriceAbove], limit: float, error: type[Exception]
+) -> None:
+    """A limit that is not a finite number is rejected when the filter is created."""
+    with pytest.raises(error):
+        filter_class(limit)
+
+
 def test_kind_is() -> None:
     """Test KindIs matches changes of the configured kind."""
     f = KindIs("removed")

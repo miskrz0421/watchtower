@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from unittest.mock import Mock
 
 import pytest
+from desktop_notifier.sync import DesktopNotifierSync
 
 from watchtower import (
     Change,
@@ -38,6 +39,12 @@ def test_desktop_notifier_requires_extra(no_desktop_notifier: None) -> None:
     """A missing desktop-notifier package explains how to install it."""
     with pytest.raises(MissingDependencyError, match="uv sync --extra desktop"):
         DesktopNotifier()
+
+
+def test_desktop_notifier_creates_real_backend() -> None:
+    """When the extra is installed, DesktopNotifier() creates the real backend."""
+    notifier = DesktopNotifier()
+    assert isinstance(notifier._backend, DesktopNotifierSync)
 
 
 def test_injected_backend_skips_optional_import(no_desktop_notifier: None) -> None:
