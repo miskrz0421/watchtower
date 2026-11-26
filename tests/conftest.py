@@ -15,7 +15,7 @@ import pytest
 from fake_listings.server import make_server
 
 from watchtower import _retry
-from watchtower.sources._polite import PoliteTransport
+from watchtower.sources import PoliteTransport, _http
 
 SAMPLE_LISTINGS: list[dict[str, Any]] = [
     {"id": "1", "title": "Flat Stare Miasto", "price": 3500, "description": "Two rooms."},
@@ -57,26 +57,16 @@ def no_desktop_notifier(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.fixture(autouse=True)
 def retry_delays(monkeypatch: pytest.MonkeyPatch) -> Iterator[list[float]]:
-    """Collect the retry waits instead of really sleeping during source tests.
-
-    `retry` resolves `_sleep` on each call, so patching the module attribute
-    reaches the already-decorated `HttpSource.fetch`. Tests may request this
-    fixture to assert on the delays.
-    """
+    """Collect the retry waits of every test instead of really sleeping."""
     delays: list[float] = []
-
-    def fake_sleep(seconds: float) -> None:
-        delays.append(seconds)
-
-    monkeypatch.setattr(_retry, "_sleep", fake_sleep)
+    monkeypatch.setattr(_retry, "_sleep", delays.append)
     yield delays
 
 
 @pytest.fixture(autouse=True)
-def patch_polite_transport(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Patch the PoliteTransport default to avoid delays."""
-    monkeypatch.setitem(
-        sys.modules,
-        "watchtower.sources._http._SHARED_TRANSPORT",
-        PoliteTransport(httpx.HTTPTransport(), min_delay=0),
-    )
+def polite_transport(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """Give each test a fresh shared transport that never waits."""
+    inner = httpx.HTTPTransport()
+    monkeypatch.setattr(_http, "_SHARED_TRANSPORT", PoliteTransport(inner, min_delay=0))
+    yield
+    inner.close()

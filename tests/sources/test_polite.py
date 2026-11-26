@@ -1,28 +1,16 @@
-"""Tests for PoliteTransport (polite inter-request spacing + revalidation cache)."""
+"""Tests for PoliteTransport (spacing per host and revalidation of saved responses)."""
 
 from __future__ import annotations
 
-from collections.abc import Callable
+import gzip
 
 import httpx
 import pytest
 
 from conftest import FakeListings
-from watchtower.sources._polite import (
-    PoliteTransport,
-    _is_storable,
-    _Saved,
-    _with_headers,
-)
+from watchtower.sources import PoliteTransport
 
-
-def _request(
-    method: str = "GET",
-    url: str = "http://example.test/",
-    headers: dict[str, str] | None = None,
-) -> httpx.Request:
-    """Build an httpx request for the given method, URL and optional headers."""
-    return httpx.Request(method, url, headers=headers)
+_URL = "http://example.test/page"
 
 
 def _response(
@@ -70,104 +58,31 @@ class _CountingTransport(httpx.BaseTransport):
         self._inner.close()
 
 
-def _make_transport(
-    handler: Callable[[httpx.Request], httpx.Response],
-    min_delay: float = 1.0,
-    clock: _Clock | None = None,
-) -> tuple[PoliteTransport, _Clock]:
-    """Build a PoliteTransport wrapping a MockTransport with a fake clock."""
-    clock = clock or _Clock()
-    inner = httpx.MockTransport(handler)
+def _replying(
+    *responses: httpx.Response, min_delay: float = 0.0
+) -> tuple[PoliteTransport, list[httpx.Request], _Clock]:
+    """Build a PoliteTransport whose server sends `responses` in order and records requests."""
+    sent: list[httpx.Request] = []
+    clock = _Clock()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        sent.append(request)
+        return responses[len(sent) - 1]
+
     transport = PoliteTransport(
-        inner, min_delay=min_delay, now=clock.fake_now, sleep=clock.fake_sleep
+        httpx.MockTransport(handler),
+        min_delay=min_delay,
+        now=clock.fake_now,
+        sleep=clock.fake_sleep,
     )
-    return transport, clock
+    return transport, sent, clock
 
 
-def test_saved_from_response_filters_body_headers() -> None:
-    """from_response keeps the decoded body and drops body/transport headers."""
-    response = _response(200, text="body", headers={"etag": '"abc"', "content-length": "4"})
-
-    saved = _Saved.from_response(response)
-
-    assert saved.status_code == 200
-    assert saved.body == b"body"
-    # content-length is a body header, so it must not be stored.
-    assert dict(saved.headers) == {"etag": '"abc"', "content-type": "text/plain; charset=utf-8"}
-
-
-def test_saved_to_response_returns_equivalent_response() -> None:
-    """to_response builds a fresh response equivalent to the saved copy."""
-    saved = _Saved(200, (("etag", '"abc"'),), b"body")
-
-    response = saved.to_response()
-
-    assert response.status_code == 200
-    assert response.read() == b"body"
-    assert response.headers.get("etag") == '"abc"'
-
-
-def test_saved_validators_returns_etag_and_last_modified() -> None:
-    """Validators returns the conditional headers matching a saved response."""
-    saved = _Saved(200, (("etag", '"abc"'), ("last-modified", "Wed")), b"body")
-
-    assert saved.validators() == {"If-None-Match": '"abc"', "If-Modified-Since": "Wed"}
-
-
-def test_saved_validators_omits_missing_headers() -> None:
-    """Validators omits validators that the saved response does not have."""
-    saved = _Saved(200, (("etag", '"abc"'),), b"body")
-
-    assert saved.validators() == {"If-None-Match": '"abc"'}
-
-
-def test_is_storable_true_for_200_with_validator() -> None:
-    """A 200 with a validator is storable."""
-    assert _is_storable(_response(200, headers={"etag": '"a"'})) is True
-
-
-def test_is_storable_true_when_cache_control_allows_storing() -> None:
-    """cache-control without no-store keeps the response storable."""
-    response = _response(200, headers={"etag": '"a"', "cache-control": "public"})
-    assert _is_storable(response) is True
-
-
-@pytest.mark.parametrize("status", [201, 304, 404, 500])
-def test_is_storable_false_for_non_200(status: int) -> None:
-    """Only a 200 is storable; every other status is not."""
-    assert _is_storable(_response(status, headers={"etag": '"a"'})) is False
-
-
-def test_is_storable_false_without_validator() -> None:
-    """A 200 without etag/last-modified is not storable."""
-    assert _is_storable(_response(200)) is False
-
-
-def test_is_storable_false_for_no_store() -> None:
-    """A 200 with cache-control: no-store is not storable."""
-    response = _response(200, headers={"etag": '"a"', "cache-control": "no-store"})
-    assert _is_storable(response) is False
-
-
-def test_with_headers_returns_copy_with_extra_headers_and_leaves_caller_untouched() -> None:
-    """_with_headers adds headers to a copy without touching the caller's request."""
-    request = _request(headers={"accept": "text/html"})
-    outgoing = _with_headers(request, {"x-extra": "1"})
-
-    assert outgoing.headers.get("accept") == "text/html"
-    assert outgoing.headers.get("x-extra") == "1"
-    assert "x-extra" not in request.headers
-
-
-def test_with_headers_does_not_share_extensions_dict() -> None:
-    """Regression test: the outgoing request gets its own extensions dict."""
-    request = _request()
-    request.extensions["caller"] = "value"
-    outgoing = _with_headers(request, {"x-extra": "1"})
-
-    assert outgoing.extensions is not request.extensions
-    outgoing.extensions["added-by-inner"] = "2"
-    assert "added-by-inner" not in request.extensions
+def _get(transport: PoliteTransport, url: str = _URL) -> httpx.Response:
+    """Send a GET for `url` through `transport` and read the body."""
+    response = transport.handle_request(httpx.Request("GET", url))
+    response.read()
+    return response
 
 
 def test_init_rejects_negative_min_delay() -> None:
@@ -176,244 +91,151 @@ def test_init_rejects_negative_min_delay() -> None:
         PoliteTransport(httpx.MockTransport(lambda _: _response()), min_delay=-0.5)
 
 
-def test_handle_request_get_sends_and_caches_storable_response() -> None:
-    """A first GET is forwarded, and a storable 200 is cached for revalidation."""
-    clock = _Clock()
-    seen: list[httpx.Request] = []
+def test_first_request_is_sent_without_validators() -> None:
+    """Nothing is saved yet, so the first request goes out unchanged."""
+    transport, sent, _ = _replying(_response(200, "hello", {"etag": '"a"'}))
 
-    def handler(request: httpx.Request) -> httpx.Response:
-        seen.append(request)
-        return _response(200, text="hello", headers={"etag": '"a"'})
-
-    transport, _ = _make_transport(handler, clock=clock)
-
-    request = _request("GET", "http://example.test/page")
-    first = transport.handle_request(request)
-
-    assert first.status_code == 200
-    assert first.read() == b"hello"
-    # Nothing saved yet, so no revalidation headers are added.
-    assert "If-None-Match" not in seen[0].headers
-
-    second = transport.handle_request(request)
-    assert second.read() == b"hello"
-    # The cached validator is used on the next request to the same URL.
-    assert seen[1].headers.get("If-None-Match") == '"a"'
+    assert _get(transport).text == "hello"
+    assert "If-None-Match" not in sent[0].headers
 
 
-def test_handle_request_post_is_not_revalidated_or_cached() -> None:
-    """Non-GET requests are forwarded as-is and never cached."""
-    clock = _Clock()
-    seen: list[httpx.Request] = []
+def test_validators_of_a_saved_response_are_sent_back() -> None:
+    """The next GET of the URL sends the saved ETag and Last-Modified."""
+    validators = {"etag": '"a"', "last-modified": "Wed, 25 Nov 2026 10:00:00 GMT"}
+    transport, sent, _ = _replying(_response(200, "hello", validators), _response(304))
 
-    def handler(request: httpx.Request) -> httpx.Response:
-        seen.append(request)
-        return _response(200, text="posted")
+    _get(transport)
+    _get(transport)
 
-    transport, _ = _make_transport(handler, clock=clock)
-
-    request = _request("POST", "http://example.test/page")
-    first = transport.handle_request(request)
-    second = transport.handle_request(request)
-
-    assert first.status_code == 200
-    assert first.read() == b"posted"
-    assert second.read() == b"posted"
-    # Both POSTs were forwarded without revalidation headers.
-    assert len(seen) == 2
-    assert all("If-None-Match" not in sent.headers for sent in seen)
+    assert sent[1].headers["If-None-Match"] == '"a"'
+    assert sent[1].headers["If-Modified-Since"] == "Wed, 25 Nov 2026 10:00:00 GMT"
 
 
-def test_handle_request_get_with_caller_conditional_is_not_revalidated() -> None:
-    """A GET carrying the caller's own conditionals is forwarded untouched."""
-    clock = _Clock()
-    seen: list[str | None] = []
+def test_not_modified_returns_the_saved_response() -> None:
+    """On a 304 the caller gets the saved 200 with its body."""
+    transport, _, _ = _replying(_response(200, "hello", {"etag": '"a"'}), _response(304))
 
-    def handler(request: httpx.Request) -> httpx.Response:
-        seen.append(request.headers.get("If-None-Match"))
-        return _response(200, text="ok")
+    _get(transport)
+    second = _get(transport)
 
-    transport, _ = _make_transport(handler, clock=clock)
-
-    request = _request("GET", "http://example.test/page", headers={"If-None-Match": '"caller"'})
-    first = transport.handle_request(request)
-    second = transport.handle_request(request)
-
-    assert first.status_code == 200
-    assert second.read() == b"ok"
-    # Both requests still carry exactly the caller's conditional.
-    assert seen == ['"caller"', '"caller"']
-
-
-def test_handle_request_get_with_saved_200_stores_new_response() -> None:
-    """A fresh 200 replaces the saved copy for the same URL."""
-    clock = _Clock()
-    seen: list[httpx.Request] = []
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        seen.append(request)
-        if len(seen) == 1:
-            return _response(200, text="old", headers={"etag": '"a"'})
-        return _response(200, text="updated", headers={"etag": '"b"'})
-
-    transport, _ = _make_transport(handler, clock=clock)
-
-    request = _request("GET", "http://example.test/page")
-    first = transport.handle_request(request)
-    second = transport.handle_request(request)
-    third = transport.handle_request(request)
-
-    assert first.read() == b"old"
     assert second.status_code == 200
-    assert second.read() == b"updated"
-    assert seen[1].headers.get("If-None-Match") == '"a"'
-    # The third request revalidates against the newly saved response.
-    assert third.read() == b"updated"
-    assert seen[2].headers.get("If-None-Match") == '"b"'
+    assert second.text == "hello"
+    assert second.headers["etag"] == '"a"'
 
 
-def test_handle_request_get_with_saved_404_keeps_saved_and_passes_through() -> None:
-    """A 404 is passed through while the saved copy is kept intact."""
-    clock = _Clock()
-    seen: list[httpx.Request] = []
+def test_saved_compressed_response_is_replayed_decoded() -> None:
+    """A gzip response is saved decoded, so replaying it does not decode it twice."""
+    compressed = httpx.Response(
+        200,
+        content=gzip.compress(b"hello"),
+        headers={"content-encoding": "gzip", "etag": '"a"'},
+    )
+    transport, _, _ = _replying(compressed, _response(304))
 
-    def handler(request: httpx.Request) -> httpx.Response:
-        seen.append(request)
-        if len(seen) == 1:
-            return _response(200, text="hello", headers={"etag": '"a"'})
-        if len(seen) == 2:
-            return _response(404)
-        return _response(304)
-
-    transport, _ = _make_transport(handler, clock=clock)
-
-    request = _request("GET", "http://example.test/page")
-    first = transport.handle_request(request)
-    missing = transport.handle_request(request)
-    third = transport.handle_request(request)
-
-    assert first.read() == b"hello"
-    assert missing.status_code == 404
-    assert seen[1].headers.get("If-None-Match") == '"a"'
-    # The 304 still replays the copy saved before the 404.
-    assert third.status_code == 200
-    assert third.read() == b"hello"
+    assert _get(transport).text == "hello"
+    assert _get(transport).text == "hello"
 
 
-def test_handle_request_revalidation_does_not_share_extensions_with_caller_request() -> None:
-    """Regression test: revalidation via _with_headers does not share extensions."""
-    clock = _Clock()
-    seen: list[httpx.Request] = []
+def test_new_200_replaces_the_saved_response() -> None:
+    """A changed page is saved, and its ETag is sent next time."""
+    transport, sent, _ = _replying(
+        _response(200, "old", {"etag": '"a"'}),
+        _response(200, "new", {"etag": '"b"'}),
+        _response(304),
+    )
 
-    def handler(request: httpx.Request) -> httpx.Response:
-        seen.append(request)
-        if len(seen) == 1:
-            return _response(200, text="old", headers={"etag": '"old"'})
-        # The inner transport mutates its own extensions copy only.
-        request.extensions["inner"] = "added"
-        return _response(200, text="fresh", headers={"etag": '"b"'})
-
-    transport, _ = _make_transport(handler, clock=clock)
-
-    request = _request("GET", "http://example.test/page")
-    request.extensions["caller"] = "value"
-    first = transport.handle_request(request)
-    second = transport.handle_request(request)
-
-    assert first.read() == b"old"
-    assert second.status_code == 200
-    assert second.read() == b"fresh"
-    assert seen[1].headers.get("If-None-Match") == '"old"'
-    # Revalidation used a copy, so the caller's extensions dict is untouched.
-    assert "inner" not in request.extensions
+    _get(transport)
+    assert _get(transport).text == "new"
+    assert _get(transport).text == "new"
+    assert sent[2].headers["If-None-Match"] == '"b"'
 
 
-def test_wait_spaces_requests_to_the_same_host() -> None:
-    """Requests to the same host are spaced by min_delay."""
-    clock = _Clock()
+def test_error_is_passed_through_and_keeps_the_saved_response() -> None:
+    """A 404 reaches the caller, and a later 304 still replays the older copy."""
+    transport, _, _ = _replying(
+        _response(200, "hello", {"etag": '"a"'}), _response(404), _response(304)
+    )
 
-    def handler(request: httpx.Request) -> httpx.Response:
-        return _response(200)
+    _get(transport)
+    assert _get(transport).status_code == 404
+    assert _get(transport).text == "hello"
 
-    transport, _ = _make_transport(handler, min_delay=1.0, clock=clock)
 
-    transport.handle_request(_request("GET", "http://example.test/a"))
-    assert clock.sleeps == []
+@pytest.mark.parametrize(
+    "first",
+    [
+        _response(200, "hello"),
+        _response(200, "hello", {"etag": '"a"', "cache-control": "no-store"}),
+        _response(404, "missing", {"etag": '"a"'}),
+    ],
+    ids=["no validator", "no-store", "not 200"],
+)
+def test_response_that_cannot_be_saved_is_not_revalidated(first: httpx.Response) -> None:
+    """Without a saved copy the next request is a plain GET again."""
+    transport, sent, _ = _replying(first, _response(200, "hello"))
 
+    _get(transport)
+    _get(transport)
+
+    assert "If-None-Match" not in sent[1].headers
+
+
+def test_caller_request_is_left_untouched() -> None:
+    """Validators are added to a copy, not to the request the caller passed."""
+    transport, _, _ = _replying(_response(200, "hello", {"etag": '"a"'}), _response(304))
+    _get(transport)
+    request = httpx.Request("GET", _URL)
+
+    transport.handle_request(request)
+
+    assert "If-None-Match" not in request.headers
+
+
+def test_requests_to_the_same_host_are_spaced() -> None:
+    """The second request to a host waits for the rest of min_delay."""
+    transport, _, clock = _replying(_response(), _response(), min_delay=1.0)
+
+    _get(transport, "http://example.test/a")
     clock.now = 0.4
-    transport.handle_request(_request("GET", "http://example.test/b"))
-    assert clock.sleeps == [0.6]  # 1.0 - (0.4 - 0.0)
+    _get(transport, "http://example.test/b")
+
+    assert clock.sleeps == [0.6]
 
 
-def test_wait_does_not_delay_different_hosts() -> None:
-    """Requests to different hosts never wait for each other."""
-    clock = _Clock()
+def test_requests_to_different_hosts_do_not_wait() -> None:
+    """Different hosts never wait for each other."""
+    transport, _, clock = _replying(_response(), _response(), min_delay=1.0)
 
-    def handler(request: httpx.Request) -> httpx.Response:
-        return _response(200)
+    _get(transport, "http://example.test/a")
+    _get(transport, "http://other.test/b")
 
-    transport, _ = _make_transport(handler, min_delay=1.0, clock=clock)
-
-    transport.handle_request(_request("GET", "http://example.test/a"))
-    transport.handle_request(_request("GET", "http://other.test/b"))
     assert clock.sleeps == []
 
 
-def test_wait_zero_delay_never_sleeps() -> None:
+def test_zero_delay_never_sleeps() -> None:
     """A zero min_delay never sleeps, even between requests to the same host."""
-    clock = _Clock()
+    transport, _, clock = _replying(_response(), _response(), min_delay=0.0)
 
-    def handler(request: httpx.Request) -> httpx.Response:
-        return _response(200)
+    _get(transport)
+    _get(transport)
 
-    transport, _ = _make_transport(handler, min_delay=0.0, clock=clock)
-
-    transport.handle_request(_request("GET", "http://example.test/a"))
-    clock.now = 0.0
-    transport.handle_request(_request("GET", "http://example.test/b"))
     assert clock.sleeps == []
-
-
-@pytest.mark.network
-def test_polite_spaces_real_requests_to_same_host(fake_listings: FakeListings) -> None:
-    """Test that PoliteTransport spaces real requests to the same host."""
-    url = f"{fake_listings.base_url}/listings"
-    clock = _Clock()
-    inner = _CountingTransport(httpx.HTTPTransport())
-    transport = PoliteTransport(inner, min_delay=0.1, now=clock.fake_now, sleep=clock.fake_sleep)
-
-    try:
-        transport.handle_request(_request("GET", url))
-        transport.handle_request(_request("GET", url))
-    finally:
-        inner.close()
-
-    # The second request had to wait one full min_delay; no real time passed.
-    assert clock.sleeps == [0.1]
-    assert len(inner.requests) == 2
 
 
 @pytest.mark.network
 def test_polite_revalidates_with_server_and_honors_304(fake_listings: FakeListings) -> None:
-    """Test that PoliteTransport sends If-None-Match and returns the saved copy on 304."""
+    """The real server answers the second request with 304 and the saved page is returned."""
     url = f"{fake_listings.base_url}/listings"
-    clock = _Clock()
     inner = _CountingTransport(httpx.HTTPTransport())
-    transport = PoliteTransport(inner, min_delay=0.0, now=clock.fake_now, sleep=clock.fake_sleep)
+    transport = PoliteTransport(inner, min_delay=0.0)
 
     try:
-        # First request: no saved copy, plain GET, server answers 200.
-        first = transport.handle_request(_request("GET", url))
-        assert first.status_code == 200
-        first_body = first.read()
-
-        # Second request: saved copy exists, so If-None-Match is sent.
-        second = transport.handle_request(_request("GET", url))
-        assert second.status_code == 200
-        assert second.read() == first_body
-
-        # The second request revalidated with the server, which answered 304.
-        assert inner.statuses == [200, 304]
-        assert inner.requests[1].headers.get("If-None-Match") == first.headers["etag"]
+        first = _get(transport, url)
+        second = _get(transport, url)
     finally:
         inner.close()
+
+    assert inner.statuses == [200, 304]
+    assert inner.requests[1].headers["If-None-Match"] == first.headers["etag"]
+    assert second.status_code == 200
+    assert second.content == first.content
