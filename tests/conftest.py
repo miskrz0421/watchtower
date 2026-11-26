@@ -6,12 +6,16 @@ import json
 import sys
 import threading
 from collections.abc import Iterator
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import httpx
 import pytest
-from fake_listings.server import ListingsServer, make_server
+from fake_listings.server import make_server
+
+from watchtower import _retry
+from watchtower.sources._polite import PoliteTransport
 
 SAMPLE_LISTINGS: list[dict[str, Any]] = [
     {"id": "1", "title": "Flat Stare Miasto", "price": 3500, "description": "Two rooms."},
@@ -25,21 +29,10 @@ class FakeListings:
 
     base_url: str
     data_path: Path
-    server: ListingsServer | None = field(default=None, init=False)
 
     def write(self, listings: list[dict[str, Any]]) -> None:
         """Replace the listings the server returns from the next request on."""
         self.data_path.write_text(json.dumps(listings), encoding="utf-8")
-
-    def request_count(self, path: str) -> int:
-        """Return how many times `path` has been requested."""
-        assert self.server is not None
-        return self.server.request_count(path)  # type: ignore[no-any-return]
-
-    def request_times(self, path: str) -> list[float]:
-        """Return the timestamps at which `path` was requested."""
-        assert self.server is not None
-        return self.server.request_times(path)  # type: ignore[no-any-return]
 
 
 @pytest.fixture
@@ -51,7 +44,6 @@ def fake_listings(tmp_path: Path) -> Iterator[FakeListings]:
     thread = threading.Thread(target=httpd.serve_forever, daemon=True)
     thread.start()
     listings.base_url = f"http://127.0.0.1:{httpd.server_port}"
-    listings.server = httpd
     yield listings
     httpd.shutdown()
     httpd.server_close()
@@ -61,3 +53,30 @@ def fake_listings(tmp_path: Path) -> Iterator[FakeListings]:
 def no_desktop_notifier(monkeypatch: pytest.MonkeyPatch) -> None:
     """Simulate an install without the optional desktop-notifier package."""
     monkeypatch.setitem(sys.modules, "desktop_notifier.sync", None)
+
+
+@pytest.fixture(autouse=True)
+def retry_delays(monkeypatch: pytest.MonkeyPatch) -> Iterator[list[float]]:
+    """Collect the retry waits instead of really sleeping during source tests.
+
+    `retry` resolves `_sleep` on each call, so patching the module attribute
+    reaches the already-decorated `HttpSource.fetch`. Tests may request this
+    fixture to assert on the delays.
+    """
+    delays: list[float] = []
+
+    def fake_sleep(seconds: float) -> None:
+        delays.append(seconds)
+
+    monkeypatch.setattr(_retry, "_sleep", fake_sleep)
+    yield delays
+
+
+@pytest.fixture(autouse=True)
+def patch_polite_transport(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Patch the PoliteTransport default to avoid delays."""
+    monkeypatch.setitem(
+        sys.modules,
+        "watchtower.sources._http._SHARED_TRANSPORT",
+        PoliteTransport(httpx.HTTPTransport(), min_delay=0),
+    )

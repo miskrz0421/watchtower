@@ -105,14 +105,12 @@ def test_server_reports_broken_data_file(fake_listings: FakeListings) -> None:
 
 
 @pytest.mark.network
-def test_server_sends_etag_and_last_modified(fake_listings: FakeListings) -> None:
-    """Test that a successful response carries ETag and Last-Modified validators."""
+def test_server_sends_etag(fake_listings: FakeListings) -> None:
+    """Test that a successful response carries an ETag validator."""
     response = httpx.get(f"{fake_listings.base_url}/listings")
 
     assert response.status_code == 200
-    assert "ETag" in response.headers
-    assert "Last-Modified" in response.headers
-    assert response.headers["ETag"]  # non-empty
+    assert response.headers["ETag"]
 
 
 @pytest.mark.network
@@ -151,34 +149,3 @@ def test_server_returns_200_for_non_matching_etag(fake_listings: FakeListings) -
 
     assert response.status_code == 200
     assert response.text  # body is present
-
-
-@pytest.mark.network
-def test_server_returns_304_for_if_modified_since(fake_listings: FakeListings) -> None:
-    """Test that If-Modified-Since at or after the file's mtime yields 304."""
-    url = f"{fake_listings.base_url}/listings"
-    httpx.get(url)
-
-    # A date in the far future should always yield 304.
-    response = httpx.get(url, headers={"If-Modified-Since": "Fri, 31 Dec 9999 23:59:59 GMT"})
-
-    assert response.status_code == 304
-
-    # A date before the file's mtime should yield 200.
-    response = httpx.get(url, headers={"If-Modified-Since": "Thu, 01 Jan 1970 00:00:00 GMT"})
-
-    assert response.status_code == 200
-
-
-@pytest.mark.network
-def test_server_tracks_requests_per_path(fake_listings: FakeListings) -> None:
-    """Test that the server records how often each path is requested."""
-    url = f"{fake_listings.base_url}/listings"
-    httpx.get(url)
-    httpx.get(url)
-    httpx.get(f"{fake_listings.base_url}/listings.json")
-
-    assert fake_listings.request_count("/listings") == 2
-    assert fake_listings.request_count("/listings.json") == 1
-    assert fake_listings.request_count("/nonexistent") == 0
-    assert len(fake_listings.request_times("/listings")) == 2

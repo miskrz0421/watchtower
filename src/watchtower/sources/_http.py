@@ -7,6 +7,9 @@ import httpx
 from watchtower._http import DEFAULT_TIMEOUT_SECONDS, USER_AGENT
 from watchtower._retry import retry, timed
 from watchtower.sources._base import Source
+from watchtower.sources._polite import PoliteTransport
+
+_SHARED_TRANSPORT = PoliteTransport(httpx.HTTPTransport())
 
 
 class HttpSource(Source):
@@ -33,7 +36,7 @@ class HttpSource(Source):
         """
         self.url = url
         self._timeout = timeout
-        self._transport = transport
+        self._transport = transport if transport is not None else _SHARED_TRANSPORT
 
     @timed
     @retry(on=httpx.TransportError, times=3, first_delay=0.25)

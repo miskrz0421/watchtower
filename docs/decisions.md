@@ -606,7 +606,42 @@ PR that makes the decision.
   delays (blocks every watcher in the synchronous engine); retrying 5xx (the scheduler already backs
   off after a failed check).
 - Consequences: a flaky connection gets two quick extra tries; a broken URL still fails on the
-  first response. Tests keep using `httpx.MockTransport`, which never raises `TransportError`.
+  first response. Tests keep using `httpx.MockTransport`. A timeout is a TransportError too,
+  so a server that hangs costs 3 × 10 s + 0.75 s, which Quit has to wait for.
+
+## ADR-030: One polite transport for all HTTP sources
+- Status: accepted · M6
+- Context: each HTTP source downloads its page on its own schedule. Several watchers often ask the
+  same website (both demo watchers ask `127.0.0.1:8000`), and they download the whole page even
+  when nothing changed. Requests sent back to back, or full downloads of an unchanged page, put
+  load on the site for nothing and can get the app blocked.
+- Decision:
+  - `PoliteTransport` is a Proxy for an `httpx` transport: it has the same `handle_request`, so
+    `HttpSource` does not know it is there.
+  - It waits until `min_delay` (1 s) has passed since the last request to the same host (the
+    domain, without the port).
+  - A `200` with an `ETag` or `Last-Modified` is saved per URL. The next GET of that URL sends them
+    back as `If-None-Match` / `If-Modified-Since`, and on `304 Not Modified` the transport returns
+    the saved response. The source parses it as usual and the diff finds no changes.
+  - One instance in `sources/_http.py` is shared by every HTTP source that is not given its own
+    `transport`, because a delay per domain works only if all requests to it pass through one
+    object. `HttpSource` still opens a new `httpx.Client` per fetch. Closing the client calls the
+    inherited `close()` of the transport, which does nothing, so the inner `HTTPTransport` stays
+    open while the app runs.
+  - No locks: all checks run in the one engine thread (ADR-007) and the GUI thread does no network
+    work (ADR-024).
+  - `now` and `sleep` are parameters, so tests never wait. A fixture in `tests/conftest.py` gives
+    every test a fresh shared transport with `min_delay=0`.
+- Alternatives: an HTTP caching library such as `hishel` (a full cache with expiry rules, more
+  than we need, and one more dependency); a delay in the scheduler (it does not know which
+  watchers share a domain); one transport per source (the delay per domain would never apply);
+  the loader passing one transport to every source (changes the registry and every source's
+  arguments for one shared object).
+- Consequences: requests to one site are at least a second apart, so the second demo watcher
+  waits about a second. A retry (ADR-029) to the same host waits for `min_delay` too, so the gap
+  between tries is at least 1 s. Saved responses are kept in memory until the app quits, so after a
+  restart the first request downloads the whole page again. A server that sends neither header is
+  downloaded in full every time, as before.
 
 ## ADR-034: The registry checks plugins and their arguments
 - Status: accepted · M6

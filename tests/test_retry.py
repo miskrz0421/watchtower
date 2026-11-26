@@ -203,18 +203,6 @@ def test_retry_accepts_a_zero_delay_and_a_unit_backoff() -> None:
     assert delays == [0.0, 0.0]
 
 
-def test_retry_asserts_when_no_attempt_was_made(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Test the defensive guard if the attempt loop cannot run."""
-    monkeypatch.setattr(_retry, "range", lambda *_: (), raising=False)
-
-    @retry(on=ValueError, times=1)
-    def work() -> None:
-        """Do nothing; the guard should fire before it is called."""
-
-    with pytest.raises(AssertionError, match="unreachable"):
-        work()
-
-
 def test_retry_preserves_the_wrapped_functions_metadata() -> None:
     """Test that functools.wraps keeps the name and docstring of the function."""
 

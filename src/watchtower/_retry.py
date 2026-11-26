@@ -11,6 +11,11 @@ _logger = logging.getLogger(__name__)
 
 
 def _sleep(seconds: float) -> None:
+    """Default sleep function of the retry decorator, ment to be patched by tests.
+
+    Args:
+        seconds: Seconds to sleep for.
+    """
     time.sleep(seconds)
 
 
@@ -52,15 +57,13 @@ def retry[**P, T](
         def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
             wait = sleep if sleep is not None else _sleep
             delay = first_delay
-            for attempt in range(1, times + 1):
+            for _ in range(times - 1):
                 try:
                     return function(*args, **kwargs)
                 except on:
-                    if attempt == times:
-                        raise
                     wait(delay)
                     delay *= backoff
-            raise AssertionError("unreachable")
+            return function(*args, **kwargs)
 
         return wrapper
 
