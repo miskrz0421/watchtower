@@ -12,6 +12,7 @@ Run it with:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 from collections.abc import Callable
 from functools import partial
@@ -25,6 +26,18 @@ _DEFAULT_HOST = "127.0.0.1"
 _DEFAULT_PORT = 8000
 _DEFAULT_DATA_PATH = Path(__file__).with_name("listings.json")
 _DETAIL_PREFIX = "/flats/"
+
+
+def _etag(path: Path) -> str:
+    """Return a SHA-256 ETag for the file contents.
+
+    Args:
+        path: The path to the file.
+
+    Returns:
+        SHA-256 ETag for the file contents.
+    """
+    return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 class Listing(TypedDict):
@@ -212,11 +225,16 @@ class ListingsHandler(BaseHTTPRequestHandler):
         super().__init__(*args, **kwargs)
 
     def do_GET(self) -> None:
-        """Route a GET request to the matching renderer."""
+        """Route a GET request to the matching renderer, honoring If-None-Match."""
         try:
             listings = load_listings(self._data_path)
         except (OSError, ValueError) as err:
             self._reply(HTTPStatus.INTERNAL_SERVER_ERROR, "text/plain", f"Bad data file: {err}\n")
+            return
+
+        etag = _etag(self._data_path)
+        if self.headers.get("If-None-Match") == etag:
+            self._reply(HTTPStatus.NOT_MODIFIED, "text/html", etag=etag)
             return
 
         routes: dict[str, tuple[str, Callable[[], str]]] = {
@@ -226,12 +244,12 @@ class ListingsHandler(BaseHTTPRequestHandler):
         }
         if self.path in routes:
             content_type, render = routes[self.path]
-            self._reply(HTTPStatus.OK, content_type, render())
+            self._reply(HTTPStatus.OK, content_type, render(), etag=etag)
             return
 
         listing = self._find_detail(listings)
         if listing is not None:
-            self._reply(HTTPStatus.OK, "text/html", render_detail(listing))
+            self._reply(HTTPStatus.OK, "text/html", render_detail(listing), etag=etag)
             return
 
         self._reply(HTTPStatus.NOT_FOUND, "text/plain", f"Not found: {self.path}\n")
@@ -260,20 +278,32 @@ class ListingsHandler(BaseHTTPRequestHandler):
         """
         return f"http://{self.headers.get('Host', 'localhost')}"
 
-    def _reply(self, status: HTTPStatus, content_type: str, body: str) -> None:
+    def _reply(
+        self,
+        status: HTTPStatus,
+        content_type: str,
+        body: str = "",
+        *,
+        etag: str | None = None,
+    ) -> None:
         """Send a complete UTF-8 response.
 
         Args:
             status: HTTP status of the response.
             content_type: Media type of the body, without the charset.
             body: Text to send.
+            etag: ETag validator to send, if any.
         """
-        payload = body.encode("utf-8")
+        payload = body.encode("utf-8") if body else b""
         self.send_response(status)
         self.send_header("Content-Type", f"{content_type}; charset=utf-8")
-        self.send_header("Content-Length", str(len(payload)))
+        if etag is not None:
+            self.send_header("ETag", etag)
+        if status != HTTPStatus.NOT_MODIFIED:
+            self.send_header("Content-Length", str(len(payload)))
         self.end_headers()
-        self.wfile.write(payload)
+        if payload and status != HTTPStatus.NOT_MODIFIED:
+            self.wfile.write(payload)
 
 
 def make_server(host: str, port: int, data_path: Path) -> ThreadingHTTPServer:

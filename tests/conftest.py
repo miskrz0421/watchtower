@@ -10,8 +10,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import httpx
 import pytest
 from fake_listings.server import make_server
+
+from watchtower import _retry
+from watchtower.sources import PoliteTransport, _http
 
 SAMPLE_LISTINGS: list[dict[str, Any]] = [
     {"id": "1", "title": "Flat Stare Miasto", "price": 3500, "description": "Two rooms."},
@@ -49,3 +53,20 @@ def fake_listings(tmp_path: Path) -> Iterator[FakeListings]:
 def no_desktop_notifier(monkeypatch: pytest.MonkeyPatch) -> None:
     """Simulate an install without the optional desktop-notifier package."""
     monkeypatch.setitem(sys.modules, "desktop_notifier.sync", None)
+
+
+@pytest.fixture(autouse=True)
+def retry_delays(monkeypatch: pytest.MonkeyPatch) -> Iterator[list[float]]:
+    """Collect the retry waits of every test instead of really sleeping."""
+    delays: list[float] = []
+    monkeypatch.setattr(_retry, "_sleep", delays.append)
+    yield delays
+
+
+@pytest.fixture(autouse=True)
+def polite_transport(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """Give each test a fresh shared transport that never waits."""
+    inner = httpx.HTTPTransport()
+    monkeypatch.setattr(_http, "_SHARED_TRANSPORT", PoliteTransport(inner, min_delay=0))
+    yield
+    inner.close()

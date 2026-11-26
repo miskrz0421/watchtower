@@ -67,6 +67,26 @@ def test_http_source_error_status_raises_source_error() -> None:
         source.snapshot()
 
 
+def test_http_source_retries_transport_errors_without_real_sleeps(
+    retry_delays: list[float],
+) -> None:
+    """Test that a temporary connection error is retried with the expected delays."""
+    attempts = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal attempts
+        attempts += 1
+        if attempts < 3:
+            raise httpx.ConnectError("temporary failure")
+        return httpx.Response(200, text="hello")
+
+    source = PlainHttpSource("http://test/page", transport=httpx.MockTransport(handler))
+
+    assert source.fetch() == "hello"
+    assert attempts == 3
+    assert retry_delays == [0.25, 0.5]
+
+
 @pytest.mark.network
 def test_sources_agree_on_the_same_listings(fake_listings: FakeListings) -> None:
     """Test that the three renderings of one dataset yield the same Items."""

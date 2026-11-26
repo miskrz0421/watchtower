@@ -5,7 +5,11 @@ from __future__ import annotations
 import httpx
 
 from watchtower._http import DEFAULT_TIMEOUT_SECONDS, USER_AGENT
+from watchtower._retry import retry, timed
 from watchtower.sources._base import Source
+from watchtower.sources._polite import PoliteTransport
+
+_SHARED_TRANSPORT = PoliteTransport(httpx.HTTPTransport())
 
 
 class HttpSource(Source):
@@ -28,12 +32,15 @@ class HttpSource(Source):
             url: Address to download.
             timeout: Request timeout in seconds.
             transport: Optional transport; tests pass `httpx.MockTransport`
-                so that they never touch the network.
+                so that they never touch the network. Without one, the
+                `PoliteTransport` shared by all HTTP sources is used.
         """
         self.url = url
         self._timeout = timeout
-        self._transport = transport
+        self._transport = transport if transport is not None else _SHARED_TRANSPORT
 
+    @timed
+    @retry(on=httpx.TransportError, times=3, first_delay=0.25)
     def fetch(self) -> str:
         """Download the URL and return the response body as text.
 
