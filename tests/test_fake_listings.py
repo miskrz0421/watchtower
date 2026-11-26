@@ -102,3 +102,83 @@ def test_server_reports_broken_data_file(fake_listings: FakeListings) -> None:
 
     assert response.status_code == 500
     assert "Bad data file" in response.text
+
+
+@pytest.mark.network
+def test_server_sends_etag_and_last_modified(fake_listings: FakeListings) -> None:
+    """Test that a successful response carries ETag and Last-Modified validators."""
+    response = httpx.get(f"{fake_listings.base_url}/listings")
+
+    assert response.status_code == 200
+    assert "ETag" in response.headers
+    assert "Last-Modified" in response.headers
+    assert response.headers["ETag"]  # non-empty
+
+
+@pytest.mark.network
+def test_server_etag_changes_when_data_changes(fake_listings: FakeListings) -> None:
+    """Test that rewriting the data file produces a new ETag."""
+    url = f"{fake_listings.base_url}/listings"
+    first = httpx.get(url).headers["ETag"]
+
+    fake_listings.write(
+        [*SAMPLE_LISTINGS, {"id": "3", "title": "New flat", "price": 1000, "description": ""}]
+    )
+
+    second = httpx.get(url).headers["ETag"]
+    assert first != second
+
+
+@pytest.mark.network
+def test_server_returns_304_for_matching_etag(fake_listings: FakeListings) -> None:
+    """Test that If-None-Match matching the current ETag yields 304 Not Modified."""
+    url = f"{fake_listings.base_url}/listings"
+    etag = httpx.get(url).headers["ETag"]
+
+    response = httpx.get(url, headers={"If-None-Match": etag})
+
+    assert response.status_code == 304
+    assert response.text == ""  # 304 must not carry a body
+
+
+@pytest.mark.network
+def test_server_returns_200_for_non_matching_etag(fake_listings: FakeListings) -> None:
+    """Test that a non-matching If-None-Match yields a full 200 response."""
+    url = f"{fake_listings.base_url}/listings"
+    httpx.get(url)  # warm up
+
+    response = httpx.get(url, headers={"If-None-Match": '"wrong"'})
+
+    assert response.status_code == 200
+    assert response.text  # body is present
+
+
+@pytest.mark.network
+def test_server_returns_304_for_if_modified_since(fake_listings: FakeListings) -> None:
+    """Test that If-Modified-Since at or after the file's mtime yields 304."""
+    url = f"{fake_listings.base_url}/listings"
+    httpx.get(url)
+
+    # A date in the far future should always yield 304.
+    response = httpx.get(url, headers={"If-Modified-Since": "Fri, 31 Dec 9999 23:59:59 GMT"})
+
+    assert response.status_code == 304
+
+    # A date before the file's mtime should yield 200.
+    response = httpx.get(url, headers={"If-Modified-Since": "Thu, 01 Jan 1970 00:00:00 GMT"})
+
+    assert response.status_code == 200
+
+
+@pytest.mark.network
+def test_server_tracks_requests_per_path(fake_listings: FakeListings) -> None:
+    """Test that the server records how often each path is requested."""
+    url = f"{fake_listings.base_url}/listings"
+    httpx.get(url)
+    httpx.get(url)
+    httpx.get(f"{fake_listings.base_url}/listings.json")
+
+    assert fake_listings.request_count("/listings") == 2
+    assert fake_listings.request_count("/listings.json") == 1
+    assert fake_listings.request_count("/nonexistent") == 0
+    assert len(fake_listings.request_times("/listings")) == 2

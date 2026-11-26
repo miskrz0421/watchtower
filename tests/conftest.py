@@ -6,12 +6,12 @@ import json
 import sys
 import threading
 from collections.abc import Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 import pytest
-from fake_listings.server import make_server
+from fake_listings.server import ListingsServer, make_server
 
 SAMPLE_LISTINGS: list[dict[str, Any]] = [
     {"id": "1", "title": "Flat Stare Miasto", "price": 3500, "description": "Two rooms."},
@@ -25,10 +25,21 @@ class FakeListings:
 
     base_url: str
     data_path: Path
+    server: ListingsServer | None = field(default=None, init=False)
 
     def write(self, listings: list[dict[str, Any]]) -> None:
         """Replace the listings the server returns from the next request on."""
         self.data_path.write_text(json.dumps(listings), encoding="utf-8")
+
+    def request_count(self, path: str) -> int:
+        """Return how many times `path` has been requested."""
+        assert self.server is not None
+        return self.server.request_count(path)  # type: ignore[no-any-return]
+
+    def request_times(self, path: str) -> list[float]:
+        """Return the timestamps at which `path` was requested."""
+        assert self.server is not None
+        return self.server.request_times(path)  # type: ignore[no-any-return]
 
 
 @pytest.fixture
@@ -40,6 +51,7 @@ def fake_listings(tmp_path: Path) -> Iterator[FakeListings]:
     thread = threading.Thread(target=httpd.serve_forever, daemon=True)
     thread.start()
     listings.base_url = f"http://127.0.0.1:{httpd.server_port}"
+    listings.server = httpd
     yield listings
     httpd.shutdown()
     httpd.server_close()

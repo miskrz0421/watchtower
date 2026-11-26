@@ -12,8 +12,11 @@ Run it with:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import time
 from collections.abc import Callable
+from email.utils import formatdate, parsedate_to_datetime
 from functools import partial
 from html import escape
 from http import HTTPStatus
@@ -25,6 +28,42 @@ _DEFAULT_HOST = "127.0.0.1"
 _DEFAULT_PORT = 8000
 _DEFAULT_DATA_PATH = Path(__file__).with_name("listings.json")
 _DETAIL_PREFIX = "/flats/"
+
+
+def _fingerprint(path: Path) -> tuple[str, float]:
+    """Return (etag, last_modified_timestamp) for a file.
+
+    The ETag is a SHA-256 of the file bytes; the timestamp is the file's
+    modification time. Both change whenever the data file is rewritten.
+    """
+    data = path.read_bytes()
+    return hashlib.sha256(data).hexdigest(), path.stat().st_mtime
+
+
+class ListingsServer(ThreadingHTTPServer):
+    """A ThreadingHTTPServer that tracks how often each path is requested.
+
+    The tracking is used by PoliteTransport tests to assert on inter-request
+    spacing. Each entry maps a request path to the list of timestamps at which
+    it was requested.
+    """
+
+    def __init__(
+        self,
+        server_address: tuple[str, int],
+        handler: Callable[..., BaseHTTPRequestHandler],
+    ) -> None:
+        """Create the server and initialize the per-path request tracker."""
+        super().__init__(server_address, handler)
+        self._requests: dict[str, list[float]] = {}
+
+    def request_count(self, path: str) -> int:
+        """Return how many times `path` has been requested."""
+        return len(self._requests.get(path, []))
+
+    def request_times(self, path: str) -> list[float]:
+        """Return the timestamps at which `path` was requested."""
+        return list(self._requests.get(path, []))
 
 
 class Listing(TypedDict):
@@ -212,11 +251,45 @@ class ListingsHandler(BaseHTTPRequestHandler):
         super().__init__(*args, **kwargs)
 
     def do_GET(self) -> None:
-        """Route a GET request to the matching renderer."""
+        """Route a GET request to the matching renderer.
+
+        Tracks the request, sends ETag/Last-Modified validators, and honors
+        conditional requests (If-None-Match / If-Modified-Since) with 304.
+        """
+        self.server._requests.setdefault(self.path, []).append(  # type: ignore[attr-defined]
+            time.time()
+        )
+
         try:
             listings = load_listings(self._data_path)
         except (OSError, ValueError) as err:
             self._reply(HTTPStatus.INTERNAL_SERVER_ERROR, "text/plain", f"Bad data file: {err}\n")
+            return
+
+        etag, last_modified = _fingerprint(self._data_path)
+
+        # Honor the caller's conditional headers.
+        if_none_match = self.headers.get("If-None-Match")
+        if_modified_since = self.headers.get("If-Modified-Since")
+        not_modified = False
+        if if_none_match == etag:
+            not_modified = True
+        elif if_modified_since is not None:
+            try:
+                since = parsedate_to_datetime(if_modified_since).timestamp()
+                if since >= last_modified:
+                    not_modified = True
+            except (ValueError, TypeError, OSError):
+                pass
+
+        if not_modified:
+            self._reply(
+                HTTPStatus.NOT_MODIFIED,
+                "text/html",
+                "",
+                etag=etag,
+                last_modified=last_modified,
+            )
             return
 
         routes: dict[str, tuple[str, Callable[[], str]]] = {
@@ -226,12 +299,24 @@ class ListingsHandler(BaseHTTPRequestHandler):
         }
         if self.path in routes:
             content_type, render = routes[self.path]
-            self._reply(HTTPStatus.OK, content_type, render())
+            self._reply(
+                HTTPStatus.OK,
+                content_type,
+                render(),
+                etag=etag,
+                last_modified=last_modified,
+            )
             return
 
         listing = self._find_detail(listings)
         if listing is not None:
-            self._reply(HTTPStatus.OK, "text/html", render_detail(listing))
+            self._reply(
+                HTTPStatus.OK,
+                "text/html",
+                render_detail(listing),
+                etag=etag,
+                last_modified=last_modified,
+            )
             return
 
         self._reply(HTTPStatus.NOT_FOUND, "text/plain", f"Not found: {self.path}\n")
@@ -260,23 +345,39 @@ class ListingsHandler(BaseHTTPRequestHandler):
         """
         return f"http://{self.headers.get('Host', 'localhost')}"
 
-    def _reply(self, status: HTTPStatus, content_type: str, body: str) -> None:
+    def _reply(
+        self,
+        status: HTTPStatus,
+        content_type: str,
+        body: str = "",
+        *,
+        etag: str | None = None,
+        last_modified: float | None = None,
+    ) -> None:
         """Send a complete UTF-8 response.
 
         Args:
             status: HTTP status of the response.
             content_type: Media type of the body, without the charset.
             body: Text to send.
+            etag: ETag validator to send, if any.
+            last_modified: Last-Modified timestamp to send, if any.
         """
-        payload = body.encode("utf-8")
+        payload = body.encode("utf-8") if body else b""
         self.send_response(status)
         self.send_header("Content-Type", f"{content_type}; charset=utf-8")
-        self.send_header("Content-Length", str(len(payload)))
+        if etag is not None:
+            self.send_header("ETag", etag)
+        if last_modified is not None:
+            self.send_header("Last-Modified", formatdate(last_modified, usegmt=True))
+        if status != HTTPStatus.NOT_MODIFIED:
+            self.send_header("Content-Length", str(len(payload)))
         self.end_headers()
-        self.wfile.write(payload)
+        if payload and status != HTTPStatus.NOT_MODIFIED:
+            self.wfile.write(payload)
 
 
-def make_server(host: str, port: int, data_path: Path) -> ThreadingHTTPServer:
+def make_server(host: str, port: int, data_path: Path) -> ListingsServer:
     """Create a server for the given data file.
 
     Args:
@@ -288,7 +389,7 @@ def make_server(host: str, port: int, data_path: Path) -> ThreadingHTTPServer:
         A server that is bound to the port but not serving yet.
     """
     handler = partial(ListingsHandler, data_path=data_path)
-    return ThreadingHTTPServer((host, port), handler)
+    return ListingsServer((host, port), handler)
 
 
 def main(argv: list[str] | None = None) -> None:
