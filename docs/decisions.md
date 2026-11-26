@@ -602,11 +602,14 @@ PR that makes the decision.
     4xx will not change and a 5xx is handled by the scheduler's backoff (ADR-023).
   - `first_delay=0.25` with the default `backoff=2.0` waits 0.25s then 0.5s, at most 0.75s extra
     per check, short enough not to stall the whole app.
+  - Together with the scheduler this is a chain of responsibility: `@retry` handles a short
+    network failure, Backoff (ADR-023) handles a check that still fails, and Disabled + alert
+    (ADR-033) handles one that keeps failing.
 - Alternatives: retrying `httpx.HTTPError` (would retry 404s three times for nothing); longer
   delays (blocks every watcher in the synchronous engine); retrying 5xx (the scheduler already backs
   off after a failed check).
 - Consequences: a flaky connection gets two quick extra tries; a broken URL still fails on the
-  first response. Tests keep using `httpx.MockTransport`. A timeout is a TransportError too,
+  first response. Tests keep using `httpx.MockTransport`. A timeout is a `TransportError` too,
   so a server that hangs costs 3 × 10 s + 0.75 s, which Quit has to wait for.
 
 ## ADR-030: One polite transport for all HTTP sources
