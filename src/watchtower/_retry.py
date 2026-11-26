@@ -11,7 +11,7 @@ _logger = logging.getLogger(__name__)
 
 
 def _sleep(seconds: float) -> None:
-    """Default sleep function of the retry decorator, ment to be patched by tests.
+    """Default sleep function of the retry decorator, meant to be patched by tests.
 
     Args:
         seconds: Seconds to sleep for.

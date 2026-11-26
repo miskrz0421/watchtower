@@ -32,7 +32,8 @@ class HttpSource(Source):
             url: Address to download.
             timeout: Request timeout in seconds.
             transport: Optional transport; tests pass `httpx.MockTransport`
-                so that they never touch the network.
+                so that they never touch the network. Without one, the
+                `PoliteTransport` shared by all HTTP sources is used.
         """
         self.url = url
         self._timeout = timeout

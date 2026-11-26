@@ -73,13 +73,13 @@ class _Saved:
 
 
 def _is_storable(response: httpx.Response) -> bool:
-    """Checks whether a response can be stored.
+    """Check whether a response can be saved for revalidation.
 
     Args:
         response: Response to check.
 
     Returns:
-        True if the response can be stored.
+        True for a 200 with an ETag or Last-Modified that does not forbid storing.
     """
     if response.status_code != 200:
         return False
@@ -89,7 +89,15 @@ def _is_storable(response: httpx.Response) -> bool:
 
 
 def _with_headers(request: httpx.Request, extra: dict[str, str]) -> httpx.Request:
-    """Copy `request` with extra headers, leaving the caller's request untouched."""
+    """Copy `request` with extra headers, leaving the caller's request untouched.
+
+    Args:
+        request: Request to copy.
+        extra: Headers to add to the copy.
+
+    Returns:
+        The new request.
+    """
     headers = request.headers.copy()
     headers.update(extra)
     return httpx.Request(
@@ -150,8 +158,6 @@ class PoliteTransport(httpx.BaseTransport):
             httpx.TransportError: If the request cannot be sent.
         """
         key = str(request.url)
-
-        saved = None
         outgoing = request
         if saved := self._saved.get(key):
             outgoing = _with_headers(request, saved.validators())
@@ -164,10 +170,9 @@ class PoliteTransport(httpx.BaseTransport):
                 response.read()
             finally:
                 response.close()
-            self._saved[key] = saved
             return saved.to_response()
 
-        if response.status_code == 200 and _is_storable(response):
+        if _is_storable(response):
             saved = _Saved.from_response(response)
             self._saved[key] = saved
             return saved.to_response()
@@ -176,10 +181,10 @@ class PoliteTransport(httpx.BaseTransport):
         return response
 
     def _wait_for_turn(self, host: str) -> None:
-        """Block until `min_delay` has passed since the last request to `host`.
+        """Wait until `min_delay` has passed since the last request to `host`.
 
-        Spacing is measured between request start times. Threads sending to the
-        same host queue up here; different hosts never wait for each other.
+        Args:
+            host: Domain of the request, without the port.
         """
         last = self._last_sent.get(host)
         if last is not None:
