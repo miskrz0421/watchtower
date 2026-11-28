@@ -20,9 +20,10 @@ from watchtower._registry import (
 )
 from watchtower.config._filters import build_filter
 from watchtower.config._intervals import parse_interval
+from watchtower.config._plugins import load_plugins
 from watchtower.core._builder import WatcherBuilder
 
-_ALLOWED_TOP_LEVEL_KEYS = {"database", "watchers"}
+_ALLOWED_TOP_LEVEL_KEYS = {"database", "plugins", "watchers"}
 _ALLOWED_WATCHER_KEYS = {"name", "source", "diff", "interval", "filters", "notify"}
 _ENV_VAR_PATTERN = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
 
@@ -290,8 +291,10 @@ def load_config(path: Path) -> Config:
     Sources, differs, notifiers and filters are created by name through the
     registry and handed to a WatcherBuilder, the same one the Python API uses
     (see ADR-018). `${NAME}` placeholders in any value are replaced from the
-    environment, so secrets stay out of the file (see ADR-010). The file format
-    is described in ADR-017 and shown in `examples/config.yaml`.
+    environment, so secrets stay out of the file (see ADR-010). The modules
+    listed under `plugins` are imported first, so the watchers can use their
+    plugins (see ADR-035). The file format is described in ADR-017 and shown
+    in `examples/config.yaml`.
 
     Args:
         path: Path to the YAML file.
@@ -301,8 +304,9 @@ def load_config(path: Path) -> Config:
 
     Raises:
         ConfigError: If the file is missing, is not valid YAML, lacks a
-            required key, names an unknown plugin, repeats a watcher name or
-            refers to an environment variable that is not set.
+            required key, names an unknown plugin, repeats a watcher name,
+            refers to an environment variable that is not set or lists a
+            plugin module that cannot be imported.
     """
     raw_config = _substitute_env_vars(_read_yaml(path))
     for key in raw_config:
@@ -310,6 +314,7 @@ def load_config(path: Path) -> Config:
             msg = f"Config file has unknown key {key!r}"
             raise ConfigError(msg)
 
+    load_plugins(raw_config.get("plugins", []), path.parent)
     database = _resolve_database(raw_config.get("database"), path.parent)
     if "watchers" not in raw_config:
         msg = f"Config file {path} lacks required key 'watchers'"

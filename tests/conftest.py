@@ -14,7 +14,7 @@ import httpx
 import pytest
 from fake_listings.server import make_server
 
-from watchtower import _retry
+from watchtower import _registry, _retry
 from watchtower.sources import PoliteTransport, _http
 
 SAMPLE_LISTINGS: list[dict[str, Any]] = [
@@ -53,6 +53,20 @@ def fake_listings(tmp_path: Path) -> Iterator[FakeListings]:
 def no_desktop_notifier(monkeypatch: pytest.MonkeyPatch) -> None:
     """Simulate an install without the optional desktop-notifier package."""
     monkeypatch.setitem(sys.modules, "desktop_notifier.sync", None)
+
+
+@pytest.fixture
+def forget_plugins() -> Iterator[None]:
+    """Unregister the plugins a test registers and forget the plugin modules it imports."""
+    registries = {kind: dict(plugins) for kind, plugins in _registry._ALL_REGISTRIES.items()}
+    yield
+    for kind, plugins in _registry._ALL_REGISTRIES.items():
+        plugins.clear()
+        plugins.update(registries[kind])
+    for name in [
+        name for name in sys.modules if name.startswith(("watchtower_plugin_", "my_plugins"))
+    ]:
+        del sys.modules[name]
 
 
 @pytest.fixture(autouse=True)
