@@ -56,7 +56,7 @@ The app's own commands are entry points declared under `[project.scripts]` in `p
 ```bash
 uv run watchtower check config.yaml    # check every watcher once      (M3)
 uv run watchtower run config.yaml      # headless scheduler            (M3)
-uv run watchtower plugins              # list registered plugins       (M3)
+uv run watchtower plugins [config.yaml] # list registered plugins       (M3)
 uv run watchtower gui config.yaml      # tray app                      (M5)
 uv run watchtower report config.yaml   # charts as PNG files           (M6)
 uv run watchtower-fake-listings        # fake listings website for demos
@@ -102,6 +102,42 @@ Set `DISCORD_WEBHOOK_URL` in the environment before loading this config: the loa
 `${NAME}` placeholders with environment values and raises `ConfigError` if one is missing, so
 secrets stay out of the file. Every `${NAME}` in the file is replaced (there is no way to escape
 one); inside `{ ... }` it must be quoted, as above, or YAML cannot parse it.
+
+## Your own plugins
+
+A plugin is a class registered with a `@register_*` decorator. List the file it is in under
+`plugins` and the config can use it like a built-in one:
+
+```python
+# shout.py, next to the config file
+from watchtower import ChangeEvent, Notifier, register_notifier
+
+
+@register_notifier("shout")
+class ShoutNotifier(Notifier):
+    """Print the summary of every event in capitals."""
+
+    def send(self, event: ChangeEvent) -> None:
+        """Print the event's summary in capitals."""
+        print(event.summary.upper())
+```
+
+```yaml
+plugins:
+  - shout.py              # a file, relative to the config file
+  - my_package.plugins    # or the name of an installed module
+watchers:
+  - name: Notes
+    source: { type: file, path: notes.txt }
+    diff: { type: text }
+    notify:
+      - { type: shout }
+```
+
+`uv run watchtower plugins config.yaml` lists the built-in plugins and the config's own. A plugin
+file runs as Python when the config is loaded, so only list files you trust. A file is loaded
+once: after editing a loaded plugin, restart the app; a newly listed file is picked up by Reload
+config.
 
 ## Project structure
 

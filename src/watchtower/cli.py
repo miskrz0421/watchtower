@@ -223,12 +223,19 @@ def _report_command(args: argparse.Namespace) -> int:
 def _plugins_command(args: argparse.Namespace) -> int:
     """Print the names of the registered plugins, by kind.
 
+    Given a config file, the plugins it lists under `plugins` are loaded first.
+
     Args:
-        args: Parsed arguments; the command takes none.
+        args: Parsed arguments with the optional `config` path.
 
     Returns:
         0.
+
+    Raises:
+        ConfigError: If the config file is invalid.
     """
+    if args.config is not None:
+        load_config(args.config)
     for kind, names in list_plugins().items():
         print(f"{kind}: {', '.join(names)}")
     return 0
@@ -268,6 +275,9 @@ def _build_parser() -> argparse.ArgumentParser:
     report_parser.set_defaults(handler=_report_command)
 
     plugins_parser = subparsers.add_parser("plugins", help="List the registered plugins")
+    plugins_parser.add_argument(
+        "config", type=Path, nargs="?", help="YAML config file whose plugins to load as well"
+    )
     plugins_parser.set_defaults(handler=_plugins_command)
     return parser
 

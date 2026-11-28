@@ -41,7 +41,8 @@ src/watchtower/
 ├── diffs/           _base (Strategy), _text, _items
 ├── filters/         _base (Specification + Composite: And/Or/Not), _builtin
 ├── notifiers/       _base (Adapter), _console, _discord, _desktop, _format (shared change formatting), _decorators
-├── config/          _loader (YAML loader), _intervals (interval parsing), _filters (filter builder)
+├── config/          _loader (YAML loader), _intervals (interval parsing), _filters (filter builder),
+│                    _plugins (plugin modules listed in the config)
 ├── core/            _watcher, _builder (Builder), _scheduler (Mediator), _clock, _logging_observer,
 │                    _states (State), _commands
 ├── reports/         _tables (pandas), _charts (matplotlib)

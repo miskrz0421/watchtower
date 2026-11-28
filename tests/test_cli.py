@@ -80,6 +80,32 @@ def test_plugins_lists_every_kind(capsys: pytest.CaptureFixture[str]) -> None:
     assert "notifier: console" in out
 
 
+@pytest.mark.usefixtures("forget_plugins")
+def test_plugins_lists_the_plugins_of_a_config(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Test that the plugins command given a config loads the plugin files it lists."""
+    plugin = tmp_path / "shout.py"
+    plugin.write_text(
+        dedent('''\
+            from watchtower import ChangeEvent, Notifier, register_notifier
+
+
+            @register_notifier("shout")
+            class ShoutNotifier(Notifier):
+                """Print nothing."""
+
+                def send(self, event: ChangeEvent) -> None:
+                    """Print nothing."""
+        '''),
+        encoding="utf-8",
+    )
+    config = _write_config(tmp_path, "plugins: [shout.py]\nwatchers: []\n")
+
+    assert main(["plugins", str(config)]) == 0
+    assert "shout" in capsys.readouterr().out
+
+
 def test_check_reports_missing_optional_dependency(
     tmp_path: Path, capsys: pytest.CaptureFixture[str], no_desktop_notifier: None
 ) -> None:

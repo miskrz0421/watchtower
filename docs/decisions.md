@@ -664,3 +664,24 @@ PR that makes the decision.
 - Consequences: a new plugin gets its simple arguments checked by annotating them. Elements of lists
   and values in `*args` and `**kwargs` are not checked; if an annotation cannot be resolved at runtime,
   only the argument names and count are.
+
+## ADR-035: Plugin modules are listed in the config file
+- Status: accepted · M6
+- Context: a plugin registers itself when its module is imported, but nothing imported a user's own
+  module, so a new plugin could only be used from a Python script that imported it and then called
+  the CLI. Discovery through package entry points was left out (ADR-001).
+- Decision:
+  - The config file may have a `plugins` list. An entry ending in `.py` is a file, relative to the
+    config file like `database`; any other entry is the name of an importable module. The loader
+    imports them all before it builds the watchers.
+  - A file runs once per process, as the module `watchtower_plugin_<file name>`. Loading the config
+    again (Reload config) skips the files already loaded, so their plugins are not registered twice
+    (ADR-034), and loads the new ones. Two plugin files with the same name are a `ConfigError`.
+  - Whatever a plugin raises while it is imported becomes a `ConfigError` naming the entry, so the
+    CLI prints an `Error:` line instead of a traceback.
+  - `watchtower plugins CONFIG` loads the config's plugins before listing them.
+- Alternatives: entry points (the plugin has to be an installed package); a plugin folder scanned
+  at start (any file put there runs, even one the config does not use); a `--plugin` option on
+  every command (the config would not work without it).
+- Consequences: a config file can run code, so it has to be trusted like the plugin itself; it
+  already names the database and the webhooks. Editing a loaded plugin file needs a restart.
